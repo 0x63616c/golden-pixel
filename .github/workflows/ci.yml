@@ -64,7 +64,7 @@ jobs:
       - name: Grid-check the simulator screenshots
         run: |
           python3 -m pip install --quiet pillow 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow
-          python3 tools/gridcheck.py "$RUNNER_TEMP"/shots/*.png
+          python3 tools/gridcheck.py --corner 120 "$RUNNER_TEMP"/shots/*.png
       - name: Device build (unsigned)
         timeout-minutes: 20
         run: |

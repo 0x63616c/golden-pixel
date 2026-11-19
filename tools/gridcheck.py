@@ -13,7 +13,7 @@ import sys
 from PIL import Image
 
 
-def check(path, n, min_solid):
+def check(path, n, min_solid, corner=0):
     im = Image.open(path).convert("RGB")
     w, h = im.size
     colours = im.getcolors(1 << 16)
@@ -28,6 +28,8 @@ def check(path, n, min_solid):
             mixed = total = 0
             for by in range(oy, h - n + 1, n):
                 for bx in range(ox, w - n + 1, n):
+                    if corner and (bx < corner or bx + n > w - corner) and (by < corner or by + n > h - corner):
+                        continue  # the display's rounded-corner mask, not the game
                     v = px[bx, by]
                     total += 1
                     for y in range(by, by + n):
@@ -53,9 +55,11 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--scale", type=int, default=6)
     ap.add_argument("--min-solid", type=float, default=1.0)
+    ap.add_argument("--corner", type=int, default=0,
+                    help="skip blocks within this many px of an image corner (screen corner masks)")
     ap.add_argument("files", nargs="+")
     a = ap.parse_args()
-    results = [check(f, a.scale, a.min_solid) for f in a.files]
+    results = [check(f, a.scale, a.min_solid, a.corner) for f in a.files]
     sys.exit(0 if all(results) else 1)
 
 
