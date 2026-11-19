@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Keep main green: the core tests are fast. Enable with `just hooks`.
+set -euo pipefail
+if git diff --cached --name-only | grep -qE '^(Core/|Package\.swift)'; then
+  swift test --quiet 2>/dev/null || swift test
+fi
+# Never commit signing keys or env files.
+if git diff --cached --name-only | grep -qE '\.p8$|fastlane/\.env|\.mobileprovision$|\.p12$'; then
+  echo "pre-commit: refusing to commit a key, profile or env file" >&2
+  exit 1
+fi

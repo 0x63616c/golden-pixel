@@ -1,0 +1,16 @@
+.build/
+.swiftpm/
+build/
+ios/GoldenPixel.xcodeproj/
+ios/build/
+*.xcarchive
+*.ipa
+*.dSYM.zip
+*.p8
+fastlane/.env*
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/test_output/
+fastlane/screenshots/
+vendor/bundle/
+.DS_Store
