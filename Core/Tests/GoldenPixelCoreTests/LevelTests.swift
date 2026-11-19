@@ -33,7 +33,7 @@ final class LevelTests: XCTestCase {
         for level in 1...10 {
             let b = LevelGen.make(level: level)
             let d = max(abs(b.gold.x - b.spawn.x), abs(b.gold.y - b.spawn.y))
-            XCTAssertGreaterThan(d, Tuning.revealRadius + 6, "level \(level)")
+            XCTAssertGreaterThan(d, Tuning.revealRadius + 4, "level \(level)")
         }
     }
 
@@ -98,7 +98,7 @@ final class LevelTests: XCTestCase {
     func testHitPointsMatchTierAndLevel() {
         let b = LevelGen.make(level: 4)
         for i in 0..<b.kind.count where b.kind[i] == .block {
-            let expected = Economy.tierHP(Int(b.tier[i]), level: 4) * (b.rich[i] ? 1.5 : 1)
+            let expected = Economy.tierHP(Int(b.tier[i]), level: 4)
             XCTAssertEqual(b.hp[i], expected, accuracy: 1e-9)
         }
         let g = b.index(b.gold.x, b.gold.y)

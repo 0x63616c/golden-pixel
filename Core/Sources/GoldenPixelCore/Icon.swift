@@ -1,5 +1,5 @@
 /// The app icon, drawn with the game's own rules on a 64x64 art canvas scaled 16x to 1024 px:
-/// 8x8 cells of 8x8 art pixels, per-cell random durability, a tunnel dug toward the golden
+/// a crop of the board with the game's 10x10 cells, per-cell random durability, a tunnel dug toward the golden
 /// pixel, top-left light only on faces open to the tunnel, a ball on its way in, and fog
 /// (pure black) beyond.
 public enum Icon {
@@ -8,7 +8,9 @@ public enum Icon {
 
     public static func draw() -> Canvas {
         let c = Canvas(width: size, height: size)
-        let cp = 8, n = size / cp
+        let cp = Tuning.cellPixels, n = 8
+        // The crop puts the golden pixel's cell just above the middle.
+        let offX = -13, offY = -8
         // Map: "." dug, "#" block, "G" gold, " " fog.
         let rows = [
             "  ####  ",
@@ -46,15 +48,16 @@ public enum Icon {
                         if (ly == 0 && up) || (lx == 0 && left) { col = light }
                         if (ly == cp - 1 && down) || (lx == cp - 1 && right) { col = dark }
                         if k == "G" && lx >= 1 && lx <= 2 && ly >= 1 && ly <= 2 { col = light }
-                        c.set(x * cp + lx, y * cp + ly, col)
+                        c.set(offX + x * cp + lx, offY + y * cp + ly, col)
                     }
                 }
             }
         }
         // A ball climbing the tunnel, with a two-pixel trail.
-        c.sprite(Sprites.ball(.basic), 4 * cp + 2, 4 * cp + 3)
-        c.set(4 * cp + 2, 5 * cp + 1, BallKind.basic.shade)
-        c.set(4 * cp + 1, 5 * cp + 3, Palette.border)
+        let bx = offX + 4 * cp + 5, by = offY + 4 * cp + 5
+        c.sprite(Sprites.ball(.basic), bx - 2, by - 2)
+        c.set(bx, by + 4, BallKind.basic.shade)
+        c.set(bx, by + 7, Palette.border)
         // Strip glow bits: the icon has no bloom.
         for i in c.pixels.indices { c.pixels[i] &= 0x00ff_ffff }
         return c

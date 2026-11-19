@@ -13,7 +13,7 @@ CADisplayLink (MTKView) ──► Game.update(dt) ──► Renderer.render ─�
   it: levels, fog, economy, simulation, UI layout and hit-testing, the camera, the font and
   sprites, and the CPU rasteriser. It builds and tests on Linux.
 - **One frame buffer.** The renderer draws every frame into one `Canvas` of art pixels: the
-  board (into its own 328 x 328 canvas, then copied through the camera at a whole zoom), the
+  board (into its own 330 x 330 canvas, then copied through the camera at a whole zoom), the
   HUD, the panel, overlays, text. No views or nodes per pixel. The alpha byte is the glow mask.
 - **Presentation** (`App/PixelView.swift`, `App/Shaders.metal`): the canvas is uploaded as one
   `rgba8` texture; the present pass reads exact texels (`texture.read`) at a whole-number

@@ -13,7 +13,7 @@ final class FogTests: XCTestCase {
                 XCTAssertEqual(b.revealed[i], near, "level \(level) cell \(i % b.size),\(i / b.size)")
             }
             XCTAssertFalse(b.revealed[b.index(b.gold.x, b.gold.y)], "the gold starts hidden")
-            XCTAssertLessThan(Fog.revealedFraction(b), 0.1, "level \(level) starts mostly dark")
+            XCTAssertLessThan(Fog.revealedFraction(b), 0.15, "level \(level) starts mostly dark")
         }
     }
 

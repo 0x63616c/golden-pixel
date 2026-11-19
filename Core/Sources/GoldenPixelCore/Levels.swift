@@ -1,4 +1,4 @@
-/// Level design. Every board is 41x41 blocks, but each level shapes its own arena inside it
+/// Level design. Every board is 33x33 blocks, but each level shapes its own arena inside it
 /// and the rest is solid wall, hidden in the fog until a ball finds it.
 ///
 /// Durability is per cell: every breakable cell rolls its own tier from a seeded, weighted
@@ -14,20 +14,20 @@ public struct LevelSpec: Sendable {
     public let radius: Int
 
     public static let campaign: [LevelSpec] = [
-        .init(name: "FIRST LIGHT", shape: .blob, radius: 12),
-        .init(name: "TWIN RIDGE", shape: .canyon, radius: 13),
-        .init(name: "THE RING", shape: .ring, radius: 14),
-        .init(name: "PILLARS", shape: .pillars, radius: 15),
-        .init(name: "SPIRAL", shape: .spiral, radius: 16),
-        .init(name: "LABYRINTH", shape: .labyrinth, radius: 17),
-        .init(name: "THE CORE", shape: .core, radius: 18),
+        .init(name: "FIRST LIGHT", shape: .blob, radius: 9),
+        .init(name: "TWIN RIDGE", shape: .canyon, radius: 10),
+        .init(name: "THE RING", shape: .ring, radius: 11),
+        .init(name: "PILLARS", shape: .pillars, radius: 12),
+        .init(name: "SPIRAL", shape: .spiral, radius: 13),
+        .init(name: "LABYRINTH", shape: .labyrinth, radius: 14),
+        .init(name: "THE CORE", shape: .core, radius: 15),
     ]
 
     public static func forLevel(_ level: Int) -> LevelSpec {
         if level >= 1 && level <= campaign.count { return campaign[level - 1] }
         let n = level - campaign.count
         let shapes = Shape.allCases
-        return LevelSpec(name: "DEEP \(n)", shape: shapes[(n * 3) % shapes.count], radius: 19)
+        return LevelSpec(name: "DEEP \(n)", shape: shapes[(n * 3) % shapes.count], radius: 15)
     }
 }
 
@@ -159,7 +159,7 @@ public enum LevelGen {
         for i in 0..<(size * size) {
             switch b.kind[i] {
             case .block:
-                let h = Economy.tierHP(Int(b.tier[i]), level: level) * (b.rich[i] ? 1.5 : 1)
+                let h = Economy.tierHP(Int(b.tier[i]), level: level)
                 b.hp[i] = h; b.maxHP[i] = h
             case .gold:
                 let h = Economy.tierHP(4, level: level) * Tuning.goldHPMultiplier

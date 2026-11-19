@@ -19,7 +19,7 @@ public struct Sprite: Sendable {
 /// Every sprite follows one light: from the top-left. Highlights ("h"/"l") sit on the upper
 /// left, shade ("d") on the lower right. Icons that are tinted are flat silhouettes.
 public enum Sprites {
-    /// The in-play ball: 5x5 art pixels on an 8x8 block, lit from the top-left.
+    /// The in-play ball: 5x5 art-pixel circle on a 10x10 block, centred on its middle pixel, lit from the top-left.
     public static func ball(_ k: BallKind) -> Sprite { ballCache[k.index] }
 
     /// The ball at HUD size (7x7, matching the font's cap height) with a mark per type.

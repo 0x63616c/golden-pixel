@@ -142,9 +142,11 @@ public final class Renderer {
 
         for r in g.rings {
             let k = 1 - r.life / r.maxLife
-            let rad = Int((r.maxRadius * Double(cp) * k).rounded())
+            let rad = (r.maxRadius * Double(cp) * k).rounded()
             let col = (r.life / r.maxLife > 0.35 ? r.color : dimmer(r.color)).glowing(r.overFog ? 200 : 255)
-            c.circle(Int(r.x * Double(cp)), Int(r.y * Double(cp)), rad, col)
+            // Centred on the exact point (a cell's centre falls between pixels on a 10-px
+            // cell), so the ring is symmetric about it.
+            c.ring(r.x * Double(cp), r.y * Double(cp), rad, col)
         }
 
         for bolt in g.bolts {
@@ -156,7 +158,8 @@ public final class Renderer {
         }
 
         for ball in g.balls {
-            // The sprite's centre pixel sits on the ball's snapped position.
+            // The sprite's centre pixel sits on the ball's snapped position, and every trail
+            // dot is a past centre pixel, so the tail lines up with the ball's middle.
             let bx = Int((ball.x * Double(cp)).rounded(.down)), by = Int((ball.y * Double(cp)).rounded(.down))
             for (j, tp) in ball.trail.enumerated() where j > 0 && j < 3 {
                 c.set(tp.x, tp.y, ball.kind.shade.glowing(j == 1 ? 110 : 60))
@@ -191,22 +194,6 @@ public final class Renderer {
         }
     }
 
-    /// Crack masks for an 8x8 cell, cumulative by stage; "X" pixels go black at stage 3.
-    static let crackRows: [[String]] = [
-        ["........", "........", "...#....", "...##...", "....#...", "........", "........", "........"],
-        ["........", ".#......", "..#.#...", "...##...", "....##..", "...#..#.", "........", "........"],
-        ["#.......", ".#....#.", "..#.##..", "...XX...", "...XX#..", "..#..##.", ".#....#.", "........"],
-    ]
-    static let crackStage: [[UInt8]] = {
-        var m = [[UInt8]](repeating: [UInt8](repeating: 0, count: 8), count: 8)
-        for (stage, rows) in crackRows.enumerated() {
-            for (y, row) in rows.enumerated() {
-                for (x, ch) in row.enumerated() where ch != "." && m[y][x] == 0 { m[y][x] = UInt8(stage + 1) | (ch == "X" ? 0x80 : 0) }
-            }
-        }
-        return m
-    }()
-
     func drawCell(_ g: Game, _ i: Int, _ x: Int, _ y: Int, _ px: Int, _ py: Int, _ cov: Double) {
         let c = boardCanvas, b = g.board, t = g.time
         let cp = Tuning.cellPixels
@@ -219,8 +206,9 @@ public final class Renderer {
         case .wall:
             base = Palette.wall; light = Palette.wallLight; dark = Palette.wallShade
         case .block:
-            let tr = Int(b.tier[i])
-            base = Palette.tiers[tr].glowing(26); light = Palette.tiersLight[tr].glowing(30); dark = Palette.tiersDark[tr].glowing(14)
+            // Durability is colour alone: the block's step on the ladder.
+            let st = Economy.ladderStep(hp: b.hp[i], level: b.level)
+            base = Palette.ladder[st].glowing(26); light = Palette.ladderLight[st].glowing(30); dark = Palette.ladderDark[st].glowing(14)
         case .gold:
             base = Palette.gold.glowing(255); light = Palette.goldLight.glowing(255); dark = Palette.goldDim.glowing(200)
         }
@@ -229,18 +217,16 @@ public final class Renderer {
         let solid = kind != .empty
         let up = solid && open(x, y - 1), left = solid && open(x - 1, y)
         let down = solid && open(x, y + 1), right = solid && open(x + 1, y)
-        let flash = (kind == .block || kind == .gold) && t - b.hitAt[i] < 0.05
-        let dmg = kind == .block || kind == .gold ? 1 - b.hp[i] / max(0.0001, b.maxHP[i]) : 0
-        let crack = dmg <= 0.001 ? 0 : (dmg > 0.66 ? 3 : (dmg > 0.33 ? 2 : 1))
-        // Cracks vary by mirroring only, so every cell still reads lit from the top-left.
-        let flipX = (x &* 7 &+ y &* 3) & 1 == 1
+        // A hit flashes the cell white for one frame.
+        let flash = (kind == .block || kind == .gold) && t - b.hitAt[i] < 1.0 / 60
         // Reveal: a square iris opening from the cell's centre, its rim drawn in the light tone.
-        let iris = cov >= 1 ? 99.0 : cov * 4.5
+        let mid = Double(cp - 1) / 2
+        let iris = cov >= 1 ? 99.0 : cov * (mid + 1)
 
         for ly in 0..<cp {
             for lx in 0..<cp {
                 let ax = px + lx, ay = py + ly
-                let d = max(abs(Double(lx) - 3.5), abs(Double(ly) - 3.5))
+                let d = max(abs(Double(lx) - mid), abs(Double(ly) - mid))
                 if d > iris { continue }
                 var col = base
                 if (ly == 0 && up) || (lx == 0 && left) { col = light }
@@ -250,12 +236,7 @@ public final class Renderer {
                     if lx >= 1 && lx <= 2 && ly >= 1 && ly <= 2 { col = light }
                     if ((ax + ay) - Int(t * 12)) % 24 == 0 { col = Palette.white.glowing(255) }
                 }
-                if crack > 0 {
-                    let m = Renderer.crackStage[ly][flipX ? cp - 1 - lx : lx]
-                    let stage = Int(m & 0x7f)
-                    if stage > 0 && stage <= crack { col = crack == 3 && m & 0x80 != 0 ? Palette.black : dark }
-                }
-                if flash { col = light }
+                if flash { col = Palette.white.glowing(200) }
                 if d > iris - 0.6 && cov < 1 { col = kind == .empty ? Palette.border : light }
                 c.set(ax, ay, col)
             }
@@ -267,11 +248,11 @@ public final class Renderer {
             if beat < 0.6 {
                 c.set(sx, sy, Palette.white.glowing(255))
                 if beat < 0.3 {
-                    let l = Palette.tiersLight[Int(b.tier[i])].glowing(160)
+                    let l = Palette.ladderLight[Economy.ladderStep(hp: b.hp[i], level: b.level)].glowing(160)
                     c.set(sx - 1, sy, l); c.set(sx + 1, sy, l); c.set(sx, sy - 1, l); c.set(sx, sy + 1, l)
                 }
             } else {
-                c.set(sx, sy, Palette.tiersLight[Int(b.tier[i])].glowing(120))
+                c.set(sx, sy, Palette.ladderLight[Economy.ladderStep(hp: b.hp[i], level: b.level)].glowing(120))
             }
         }
     }

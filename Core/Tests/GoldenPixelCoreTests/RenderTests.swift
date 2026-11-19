@@ -3,15 +3,15 @@ import XCTest
 
 final class RenderTests: XCTestCase {
     /// The Duo's inner display renders at 2853 x 2007 px. At 6 device pixels per art pixel the
-    /// canvas is 475 x 334 (2850 x 2004 px: 1.5 px spare per side), the 41 x 41 board of 8x8
-    /// cells (328 px) fits the height, and the panel takes the rest of the width.
+    /// canvas is 475 x 334 (2850 x 2004 px: 1.5 px spare per side), the 33 x 33 board of 10x10
+    /// cells (330 px) fits the height, and the panel takes the rest of the width.
     func testDuoLayoutFits() {
         let (w, h, s) = (Tuning.canvasWidth, Tuning.canvasHeight, Tuning.artScale)
         XCTAssertEqual(2853 / s, w); XCTAssertEqual(2007 / s, h)
         XCTAssertLessThan(2853 - w * s, s); XCTAssertLessThan(2007 - h * s, s)
         let L = Layout.make(width: w, height: h, collapsed: false)
         XCTAssertEqual(L.board.w, Tuning.boardCells * Tuning.cellPixels)
-        XCTAssertEqual(L.board.w, 328)
+        XCTAssertEqual(L.board.w, 330)
         XCTAssertGreaterThanOrEqual(L.board.y, 0)
         XCTAssertLessThanOrEqual(L.board.maxY, h)
         XCTAssertLessThanOrEqual(L.board.maxX, L.panel.x)
@@ -105,5 +105,34 @@ final class RenderTests: XCTestCase {
         let c = Canvas(width: 3, height: 2)
         let png = PNG.encode(c, scale: 2)
         XCTAssertEqual(Array(png.prefix(8)), [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A])
+    }
+
+    /// The ball is a 5x5 circle centred on its own pixel, and its trail runs through past
+    /// centre pixels, so the tail lines up with the middle of the ball.
+    func testBallAndTrailAreCentred() {
+        let g = Game(seed: 1)
+        g.ui.started = true
+        let b = g.board
+        for i in b.revealed.indices { b.revealed[i] = true; b.revealedAt[i] = -10 }
+        let cp = Double(Tuning.cellPixels)
+        let sx = Double(b.spawn.x) + 0.37, sy = Double(b.spawn.y) + 0.61
+        var ball = Ball(kind: .basic, x: sx, y: sy, vx: 1, vy: 0)
+        let centre = Point(Int(sx * cp), Int(sy * cp))
+        ball.trail = [centre, Point(centre.x - 3, centre.y), Point(centre.x - 6, centre.y)]
+        g.balls = [ball]
+        g.particles.removeAll(); g.rings.removeAll()
+        let r = Renderer()
+        r.render(g)
+        let L = g.ui.layout
+        func px(_ x: Int, _ y: Int) -> Pixel { r.canvas.get(L.board.x + x, L.board.y + y) & 0x00ff_ffff }
+        let s = Sprites.ball(.basic)
+        XCTAssertEqual(s.width, 5); XCTAssertEqual(s.height, 5)
+        XCTAssertEqual(px(centre.x, centre.y), s.pixels[12]! & 0x00ff_ffff, "sprite centre on the ball's pixel")
+        // Symmetric silhouette: the corners are empty, the middle row and column are full.
+        XCTAssertNil(s.pixels[0]); XCTAssertNil(s.pixels[4]); XCTAssertNil(s.pixels[20]); XCTAssertNil(s.pixels[24])
+        for k in 0..<5 { XCTAssertNotNil(s.pixels[2 * 5 + k]); XCTAssertNotNil(s.pixels[k * 5 + 2]) }
+        // Trail dots sit on the centre row.
+        XCTAssertEqual(px(centre.x - 3, centre.y), BallKind.basic.shade & 0x00ff_ffff)
+        XCTAssertEqual(px(centre.x - 6, centre.y), BallKind.basic.shade & 0x00ff_ffff)
     }
 }

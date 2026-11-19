@@ -146,15 +146,18 @@ public enum Tuning {
     public static let canvasWidth = 475
     public static let canvasHeight = 334
 
-    /// Ball diameter is 5/8 of a cell (a 5x5 sprite on an 8x8 block).
-    public static let ballRadius = 0.3125
+    /// Ball diameter is half a cell: a 5x5 sprite (odd, so it has a true centre pixel) on a
+    /// 10x10 block.
+    public static let ballRadius = 0.25
     /// Art pixels per smashable block.
-    public static let cellPixels = 8
+    public static let cellPixels = 10
     /// The board is always this many blocks square; levels shape the playable area inside it.
-    /// 41 x 8 = 328 art pixels, which fits the Duo canvas's 334-pixel height.
-    public static let boardCells = 41
+    /// 33 x 10 = 330 art pixels, which fits the Duo canvas's 334-pixel height.
+    public static let boardCells = 33
     /// Durability (hits at 1 damage) and payout of each tier on level 1.
-    public static let tierHP: [Double] = [1, 2, 3, 4, 5]
+    /// Hits (at 1 damage on level 1) each tier takes. Tier t starts t + 1 steps up the colour
+    /// ladder; the last hit point is the grey step, and the hit after that breaks it.
+    public static let tierHP: [Double] = [2, 3, 4, 5, 6]
     public static let tierValue: [Double] = [1, 3, 7, 15, 32]
     public static let richMultiplier = 5.0
     /// Odds that a block is rich.

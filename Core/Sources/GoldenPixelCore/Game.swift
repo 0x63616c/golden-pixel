@@ -293,8 +293,9 @@ public final class Game {
         earn(value * mods.money, combo: true)
         board.kind[i] = .empty
         board.hp[i] = 0
-        let color = wasGold ? Palette.gold : (shown ? Palette.tiers[tier] : Palette.text2)
-        let fade = wasGold ? Palette.goldDim : (shown ? Palette.tiersDark[tier] : Palette.border)
+        // A block breaks from its grey last step, so its dust is grey.
+        let color = wasGold ? Palette.gold : (shown ? Palette.ladder[0] : Palette.text2)
+        let fade = wasGold ? Palette.goldDim : (shown ? Palette.ladderDark[0] : Palette.border)
         for _ in 0..<(wasGold ? 40 : 5) {
             let a = rng.range(0, 6.283185), s = rng.range(2, wasGold ? 14 : 7)
             let life = rng.range(0.25, wasGold ? 1.4 : 0.55)

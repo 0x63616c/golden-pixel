@@ -32,10 +32,10 @@ public enum Palette {
     public static let text = rgb(0xededed)
     public static let white = rgb(0xffffff)
 
-    /// Unbreakable rock: Vercel's mid greys, lit from the top-left like everything else.
-    public static let wall = rgb(0x333333)
-    public static let wallLight = rgb(0x666666)
-    public static let wallShade = rgb(0x1a1a1a)
+    /// Unbreakable rock: bone white, far brighter than a grey last-hit block.
+    public static let wall = rgb(0xededed)
+    public static let wallLight = rgb(0xffffff)
+    public static let wallShade = rgb(0xa1a1a1)
 
     public static let gold = rgb(0xffd500)
     public static let goldLight = rgb(0xfff27a)
@@ -44,6 +44,12 @@ public enum Palette {
 
     public static let blue = rgb(0x0070f3)
     public static let cyan = rgb(0x50fff0)
+
+    /// The durability ladder a block walks down as it is hit: crimson, pink, amber, lime,
+    /// green, then dim grey on its last hit point. Index = `Economy.ladderStep`.
+    public static let ladder: [Pixel] = [0x555555, 0x00e676, 0xd4ff3a, 0xffb224, 0xff1f5a, 0xb4005a].map { rgb($0) }
+    public static let ladderLight: [Pixel] = [0x777777, 0x7dffb8, 0xeaff9c, 0xffd88a, 0xff8aa8, 0xe0428f].map { rgb($0) }
+    public static let ladderDark: [Pixel] = [0x3a3a3a, 0x00914a, 0x86a324, 0xa87416, 0xa3143a, 0x6e0037].map { rgb($0) }
 
     /// Durability ramp, cool to hot: green, acid lime, amber, hot pink, crimson.
     public static let tiers: [Pixel] = [0x00e676, 0xd4ff3a, 0xffb224, 0xff1f5a, 0xb4005a].map { rgb($0) }

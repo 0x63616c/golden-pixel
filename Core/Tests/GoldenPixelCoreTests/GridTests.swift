@@ -14,17 +14,18 @@ final class GridTests: XCTestCase {
 
     func assertBlocksSolid(_ px: [Pixel], width: Int, height: Int, n: Int, x0: Int = 0, y0: Int = 0, _ name: String) {
         var bad = 0
+        var where_: [String] = []
         var by = y0
         while by + n <= height {
             var bx = x0
             while bx + n <= width {
                 let v = px[by * width + bx] & 0x00ff_ffff
-                outer: for y in by..<(by + n) { for x in bx..<(bx + n) where px[y * width + x] & 0x00ff_ffff != v { bad += 1; break outer } }
+                outer: for y in by..<(by + n) { for x in bx..<(bx + n) where px[y * width + x] & 0x00ff_ffff != v { bad += 1; if where_.count < 6 { where_.append("\(bx),\(by)") }; break outer } }
                 bx += n
             }
             by += n
         }
-        XCTAssertEqual(bad, 0, "\(name): \(bad) blocks of \(n)x\(n) are not one colour")
+        XCTAssertEqual(bad, 0, "\(name): \(bad) blocks of \(n)x\(n) are not one colour, e.g. at \(where_)")
     }
 
     func testEveryStagedSceneIsOnTheGrid() {
@@ -60,7 +61,9 @@ final class GridTests: XCTestCase {
         var crop = [Pixel](repeating: 0, count: L.board.w * L.board.h)
         for y in 0..<L.board.h { for x in 0..<L.board.w { crop[y * L.board.w + x] = r.canvas.get(L.board.x + x, L.board.y + y) } }
         // The HUD zoom badge sits on top of the board; blank it out.
-        for y in 0..<14 { for x in (L.board.w - 30)..<L.board.w { crop[y * L.board.w + x] = 0 } }
+        // (Blanked on the board's block phase, so the blank itself doesn't split a block.)
+        let bx0 = L.board.w - 34 - ((L.board.w - 34 - ox) % z), by1 = oy + z * ((16 - oy + z - 1) / z)
+        for y in 0..<by1 { for x in bx0..<L.board.w { crop[y * L.board.w + x] = 0 } }
         assertBlocksSolid(crop, width: L.board.w, height: L.board.h, n: z, x0: ox, y0: oy, "zoom \(z)")
     }
 

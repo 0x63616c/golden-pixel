@@ -61,6 +61,15 @@ public enum Economy {
     public static func levelHPScale(_ level: Int) -> Double { pow(1.85, Double(level - 1)) }
     public static func levelValueScale(_ level: Int) -> Double { pow(1.75, Double(level - 1)) }
     public static func tierHP(_ tier: Int, level: Int) -> Double { Tuning.tierHP[tier] * levelHPScale(level) }
+
+    /// One step of the durability ladder on a level: the HP of one colour.
+    public static func hitUnit(level: Int) -> Double { levelHPScale(level) }
+
+    /// Which colour a block shows: 0 = grey (one step left), 1 green ... 5 crimson.
+    public static func ladderStep(hp: Double, level: Int) -> Int {
+        let steps = Int((hp / hitUnit(level: level) - 1e-9).rounded(.up))
+        return max(0, min(Palette.ladder.count - 1, steps - 1))
+    }
     public static func tierValue(_ tier: Int, level: Int) -> Double { Tuning.tierValue[tier] * levelValueScale(level) }
     public static func skillPointsForClear(_ level: Int) -> Int { 2 + level / 2 }
 
