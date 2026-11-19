@@ -79,6 +79,17 @@ sim() {
   xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" ${SCENE:+-GPScene "$SCENE"}
 }
 
+# Prints "<inner-id> <outer-id>" for a multi-display simulator (largest display first), or
+# nothing when it has a single display. simctl lists the choices when --display is missing.
+duo_displays() {
+  local msg; msg=$(limit 30 xcrun simctl io "$1" screenshot "$(mktemp -u).png" 2>&1 || true)
+  printf '%s\n' "$msg" | python3 -c '
+import re, sys
+ds = [(int(w) * int(h), i) for i, w, h in re.findall(r"--display=(\S+).*? (\d+)x(\d+)", sys.stdin.read())]
+ds.sort(reverse=True)
+print(" ".join(i for _, i in ds))'
+}
+
 shots() {
   local out=${1:-build/shots}
   mkdir -p "$out"
@@ -96,20 +107,23 @@ shots() {
   local profile
   profile=$(find "$(xcode-select -p)/../Developer/Platforms/iPhoneOS.platform" /Library/Developer/CoreSimulator /Applications/Xcode*.app -path "*iPhone Duo*.simdevicetype*" -name profile.plist 2>/dev/null | head -1 || true)
   [[ -n "$profile" ]] && plutil -convert json -o "$out/duo-profile.json" "$profile" || true
+  # The Duo simulator has two displays; the inner (larger) one is the game's target.
+  local inner outer
+  read -r inner outer < <(duo_displays "$udid")
+  say "Inner display ${inner:-default}, outer display ${outer:-none}"
+  mkdir -p "$out/outer"
   for scene in title start mid zoom upgrades late skills gold; do
     say "Scene $scene"
     limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
     sleep 4
-    for display in internal external; do
-      limit 30 xcrun simctl io "$udid" screenshot --display="$display" "$out/$scene-$display.png" 2>/dev/null || true
-    done
-    [[ -f "$out/$scene-internal.png" ]] || limit 30 xcrun simctl io "$udid" screenshot "$out/$scene.png"
+    limit 30 xcrun simctl io "$udid" screenshot ${inner:+--display=$inner} "$out/$scene.png"
+    [[ -n "$outer" ]] && { limit 30 xcrun simctl io "$udid" screenshot --display="$outer" "$out/outer/$scene.png" || true; }
   done
   for scene in start late gold; do
     say "Recording $scene"
     limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
     sleep 1
-    xcrun simctl io "$udid" recordVideo --codec=h264 --force "$out/$scene.mp4" &
+    xcrun simctl io "$udid" recordVideo ${inner:+--display=$inner} --codec=h264 --force "$out/$scene.mp4" &
     local rec=$!
     sleep 7
     kill -INT "$rec"; wait "$rec" || true
