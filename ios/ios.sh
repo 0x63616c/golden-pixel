@@ -79,47 +79,6 @@ sim() {
   xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" ${SCENE:+-GPScene "$SCENE"}
 }
 
-# Prints "<inner-id> <outer-id>" for a multi-display simulator (largest display first), or
-# nothing when it has a single display. simctl lists the choices when --display is missing.
-# Boots the simulator, retrying from a clean shutdown once; first boots on CI runners are flaky.
-boot_sim() {
-  local udid=$1 try
-  for try in 1 2 3; do
-    xcrun simctl boot "$udid" 2>/dev/null || true
-    if limit 240 xcrun simctl bootstatus "$udid" -b; then return; fi
-    say "Boot attempt $try timed out; shutting down and retrying"
-    limit 60 xcrun simctl shutdown "$udid" 2>/dev/null || true
-    [[ $try -eq 2 ]] && { limit 60 xcrun simctl erase "$udid" || true; }
-  done
-  die "Simulator didn't boot after 3 attempts"
-}
-
-# simctl has no fold control, so use the hinge CLI (MIT, pinned) to unfold the Duo simulator.
-HINGE_REPO=https://github.com/artemnovichkov/hinge.git
-HINGE_SHA=06cb720276281da7f1aadd3874acb0d0ae5eb2b5
-unfold() {
-  local dir=build/tools/hinge
-  if [[ ! -x "$dir/bin/hinge" ]]; then
-    rm -rf "$dir"; mkdir -p "$dir"
-    git -C "$dir" init -q
-    git -C "$dir" fetch -q --depth 1 "$HINGE_REPO" "$HINGE_SHA"
-    git -C "$dir" checkout -q FETCH_HEAD
-  fi
-  say "Unfolding the Duo flat"
-  HINGE_DEVICE=$1 limit 120 "$dir/bin/hinge" open || say "hinge open failed; screenshots may be black"
-  sleep 4
-  HINGE_DEVICE=$1 limit 60 "$dir/bin/hinge" posture || true
-}
-
-duo_displays() {
-  local msg; msg=$(limit 30 xcrun simctl io "$1" screenshot "$(mktemp -u).png" 2>&1 || true)
-  printf '%s\n' "$msg" | python3 -c '
-import re, sys
-ds = [(int(w) * int(h), i) for i, w, h in re.findall(r"--display=(\S+).*? (\d+)x(\d+)", sys.stdin.read())]
-ds.sort(reverse=True)
-print(" ".join(i for _, i in ds))'
-}
-
 shots() {
   local out=${1:-build/shots}
   mkdir -p "$out"
@@ -138,7 +97,8 @@ shots() {
   [[ -n "$profile" ]] && plutil -convert json -o "$out/duo-profile.json" "$profile" || true
   # The Duo simulator has two displays; the inner (larger) one is the game's target.
   local inner outer
-  read -r inner outer < <(duo_displays "$udid")
+  # simctl's display ids for the Duo profile: 3 = LCD-1 inner 2007x2853, 1 = LCD cover 1398x2034.
+  if [[ "$SIM_TYPE" == *Duo* ]]; then inner=3; outer=1; fi
   if [[ -n "$outer" ]]; then
     # A booted Duo starts folded with the inner screen black; unfold it flat.
     unfold "$udid"
