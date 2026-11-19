@@ -1,0 +1,81 @@
+# Archive, sign and upload a TestFlight build. Runs on main after CI-worthy changes, or by
+# hand. Never submits for App Store review.
+#
+# Lockdown: the signing secrets live in the "testflight" environment, which only the main
+# branch can deploy to, and the job refuses to run for anyone but the repo owner.
+name: TestFlight
+
+on:
+  push:
+    branches: [main]
+    paths-ignore: ["docs/**", "site/**", "**.md"]
+  workflow_dispatch:
+    inputs:
+      changelog:
+        description: What to test
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+jobs:
+  testflight:
+    if: github.repository == '0x63616c/golden-pixel' && github.ref == 'refs/heads/main' && github.actor == '0x63616c'
+    runs-on: xcode-27
+    timeout-minutes: 90
+    environment: testflight
+    env:
+      FASTLANE_SKIP_UPDATE_CHECK: "1"
+      FASTLANE_HIDE_CHANGELOG: "1"
+      LANG: en_US.UTF-8
+      LC_ALL: en_US.UTF-8
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check secrets
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: |
+          missing=0
+          for n in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT; do
+            [[ -n "${!n}" ]] || { echo "::error::Missing secret $n (docs/ios.md)"; missing=1; }
+          done
+          exit "$missing"
+      - uses: ruby/setup-ruby@f9c4492e86def3e644ab32a0ef185eda5b0c20d0
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+      - run: command -v xcodegen >/dev/null || brew install xcodegen
+      - name: Core tests
+        run: swift test
+      - name: Build and upload
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+          CHANGELOG: ${{ inputs.changelog }}
+        run: |
+          umask 077
+          export ASC_KEY_PATH="$RUNNER_TEMP/AuthKey_$ASC_KEY_ID.p8"
+          printf '%s\n' "$ASC_KEY_CONTENT" > "$ASC_KEY_PATH"
+          trap 'rm -f "$ASC_KEY_PATH"' EXIT
+          if [[ -n "$CHANGELOG" ]]; then
+            bundle exec fastlane ios beta changelog:"$CHANGELOG"
+          else
+            bundle exec fastlane ios beta
+          fi
+      - name: Processing state
+        if: success()
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: bundle exec fastlane ios status wait:900

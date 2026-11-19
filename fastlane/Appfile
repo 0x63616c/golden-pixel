@@ -1,0 +1,4 @@
+# Shared fastlane settings, so commands don't need --app_identifier / --team_id.
+# App Store Connect: "Golden Pixel", SKU golden-pixel-001, en-US.
+app_identifier "co.worldwidewebb.goldenpixel"
+team_id "X9E4HG27NK"

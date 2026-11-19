@@ -1,0 +1,153 @@
+# Release lanes. CI runs them (.github/workflows/testflight.yml, asc-setup.yml) with the
+# App Store Connect API key in ASC_KEY_ID / ASC_ISSUER_ID / ASC_KEY_CONTENT; locally, put the
+# same three in fastlane/.env (gitignored). Run from the repo root: `bundle exec fastlane <lane>`.
+# Note: inside lanes, `sh` and File paths are relative to this fastlane/ folder.
+
+default_platform(:ios)
+
+BUNDLE_ID = "co.worldwidewebb.goldenpixel"
+APP_NAME = "Golden Pixel"
+FALLBACK_NAMES = ["Golden Pixel: Idle Breaker", "Golden Pixel - Pixel Breaker"].freeze
+SKU = "golden-pixel-001"
+GROUP = "Me"
+
+def summary(line)
+  UI.message(line)
+  path = ENV["GITHUB_STEP_SUMMARY"]
+  File.open(path, "a") { |f| f.puts(line) } if path
+end
+
+def marketing_version
+  File.read(File.expand_path("../ios/project.yml", __dir__))[/MARKETING_VERSION:\s*"([^"]+)"/, 1]
+end
+
+private_lane :api_key do
+  app_store_connect_api_key(
+    key_id: ENV.fetch("ASC_KEY_ID"),
+    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+    key_content: ENV.fetch("ASC_KEY_CONTENT")
+  )
+end
+
+# The internal "Me" group gets every build; the account holder is its tester.
+def ensure_group(app)
+  group = app.get_beta_groups.find { |g| g.name == GROUP }
+  unless group
+    client = Spaceship::ConnectAPI.client.test_flight_request_client
+    group = client.post("v1/betaGroups", {
+      data: {
+        type: "betaGroups",
+        attributes: { name: GROUP, isInternalGroup: true, hasAccessToAllBuilds: true },
+        relationships: { app: { data: { type: "apps", id: app.id } } }
+      }
+    }).to_models.first
+    summary("- Created internal TestFlight group `#{GROUP}`")
+  end
+  begin
+    users = Spaceship::ConnectAPI::User.all.select { |u| (Array(u.roles) & ["ACCOUNT_HOLDER", "ADMIN"]).any? }
+    users.each do |u|
+      email = u.email.to_s.empty? ? u.username : u.email
+      next if email.to_s.empty?
+      next if Spaceship::ConnectAPI::BetaTester.all(filter: { email: email, betaGroups: group.id }).any?
+      existing = Spaceship::ConnectAPI::BetaTester.find(email: email)
+      if existing
+        group.add_beta_testers(beta_tester_ids: [existing.id])
+      else
+        Spaceship::ConnectAPI.client.post_beta_tester_assignment(
+          beta_group_ids: [group.id],
+          attributes: { email: email, firstName: u.first_name, lastName: u.last_name }
+        )
+      end
+      summary("- Added an internal tester to `#{GROUP}` (user id #{u.id})")
+    end
+  rescue StandardError
+    # API errors can contain personal data; never print them.
+    summary("- Could not sync internal testers (details withheld)")
+  end
+  group
+end
+
+platform :ios do
+  desc "Register the bundle ID, find or create the App Store Connect record, and set up TestFlight"
+  lane :setup do
+    api_key
+    summary("## App Store Connect setup")
+    bundle = Spaceship::ConnectAPI::BundleId.find(BUNDLE_ID)
+    if bundle
+      summary("- Bundle ID `#{BUNDLE_ID}` already registered")
+    else
+      bundle = Spaceship::ConnectAPI::BundleId.create(name: APP_NAME, platform: "IOS", identifier: BUNDLE_ID)
+      summary("- Registered bundle ID `#{BUNDLE_ID}`")
+    end
+    app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+    unless app
+      ([APP_NAME] + FALLBACK_NAMES).each do |name|
+        begin
+          client = Spaceship::ConnectAPI.client.tunes_request_client
+          client.post("v1/apps", {
+            data: {
+              type: "apps",
+              attributes: { name: name, sku: SKU, primaryLocale: "en-US", bundleId: BUNDLE_ID },
+              relationships: { bundleId: { data: { type: "bundleIds", id: bundle.id } } }
+            }
+          })
+          app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+          summary("- Created app record `#{name}`") if app
+          break if app
+        rescue StandardError => e
+          status = e.respond_to?(:status) ? e.status : nil
+          summary("- Creating `#{name}` with the API key was refused (#{e.class}#{status ? " #{status}" : ""}): #{e.message.to_s[0, 300]}")
+          break unless e.message.to_s =~ /name/i
+        end
+      end
+    end
+    if app
+      summary("- App record: **#{app.name}**, Apple ID `#{app.id}`, SKU `#{app.sku}`")
+      ensure_group(app)
+    else
+      summary("- **No app record yet.** Create it in App Store Connect > Apps > + > New App: name `#{APP_NAME}`, bundle ID `#{BUNDLE_ID}`, SKU `#{SKU}`, en-US. Then rerun this workflow.")
+    end
+  end
+
+  desc "Archive, upload to TestFlight (internal group gets it automatically)"
+  lane :beta do |options|
+    api_key
+    app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+    UI.user_error!("No App Store Connect app record for #{BUNDLE_ID}: run the ASC setup workflow (docs/ios.md)") unless app
+    version = marketing_version
+    build = latest_testflight_build_number(app_identifier: BUNDLE_ID, version: version, initial_build_number: 0) + 1
+    sh("../ios/ios.sh", "archive", build.to_s)
+    ipa = Dir[File.expand_path("../ios/build/export/*.ipa", __dir__)].first
+    UI.user_error!("No .ipa exported") unless ipa
+    upload_to_testflight(
+      ipa: ipa,
+      app_identifier: BUNDLE_ID,
+      skip_waiting_for_build_processing: true,
+      distribute_external: false,
+      changelog: options[:changelog] || "Golden Pixel #{version} (#{build})"
+    )
+    summary("## TestFlight\n- Uploaded **#{version} (#{build})** for `#{BUNDLE_ID}`")
+    ensure_group(app)
+    File.open(ENV["GITHUB_ENV"], "a") { |f| f.puts("GP_BUILD=#{build}") } if ENV["GITHUB_ENV"]
+  end
+
+  desc "Latest TestFlight builds and their processing state"
+  lane :status do |options|
+    api_key
+    app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+    UI.user_error!("No app record") unless app
+    wait = options[:wait].to_i
+    deadline = Time.now + wait
+    loop do
+      builds = Spaceship::ConnectAPI::Build.all(app_id: app.id, sort: "-uploadedDate", limit: 5)
+      latest = builds.first
+      done = latest && latest.processing_state != "PROCESSING"
+      if done || Time.now >= deadline
+        summary("## TestFlight builds")
+        builds.each { |b| summary("- #{b.app_version} (#{b.version}): #{b.processing_state}, uploaded #{b.uploaded_date}") }
+        break
+      end
+      sleep 30
+    end
+  end
+end
