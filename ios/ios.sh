@@ -79,6 +79,36 @@ sim() {
   xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" ${SCENE:+-GPScene "$SCENE"}
 }
 
+# Boots the simulator, retrying from a clean shutdown once; first boots on CI runners are flaky.
+boot_sim() {
+  local udid=$1 try
+  for try in 1 2 3; do
+    xcrun simctl boot "$udid" 2>/dev/null || true
+    if limit 240 xcrun simctl bootstatus "$udid" -b; then return; fi
+    say "Boot attempt $try timed out; shutting down and retrying"
+    limit 60 xcrun simctl shutdown "$udid" 2>/dev/null || true
+    [[ $try -eq 2 ]] && { limit 60 xcrun simctl erase "$udid" || true; }
+  done
+  die "Simulator didn't boot after 3 attempts"
+}
+
+# simctl has no fold control, so use the hinge CLI (MIT, pinned) to unfold the Duo simulator.
+HINGE_REPO=https://github.com/artemnovichkov/hinge.git
+HINGE_SHA=06cb720276281da7f1aadd3874acb0d0ae5eb2b5
+unfold() {
+  local dir=build/tools/hinge
+  if [[ ! -x "$dir/bin/hinge" ]]; then
+    rm -rf "$dir"; mkdir -p "$dir"
+    git -C "$dir" init -q
+    git -C "$dir" fetch -q --depth 1 "$HINGE_REPO" "$HINGE_SHA"
+    git -C "$dir" checkout -q FETCH_HEAD
+  fi
+  say "Unfolding the Duo flat"
+  HINGE_DEVICE=$1 limit 120 "$dir/bin/hinge" open || say "hinge open failed; screenshots may be black"
+  sleep 4
+  HINGE_DEVICE=$1 limit 60 "$dir/bin/hinge" posture || true
+}
+
 shots() {
   local out=${1:-build/shots}
   mkdir -p "$out"
