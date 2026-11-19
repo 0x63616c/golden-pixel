@@ -81,6 +81,19 @@ sim() {
 
 # Prints "<inner-id> <outer-id>" for a multi-display simulator (largest display first), or
 # nothing when it has a single display. simctl lists the choices when --display is missing.
+# Boots the simulator, retrying from a clean shutdown once; first boots on CI runners are flaky.
+boot_sim() {
+  local udid=$1 try
+  for try in 1 2 3; do
+    xcrun simctl boot "$udid" 2>/dev/null || true
+    if limit 240 xcrun simctl bootstatus "$udid" -b; then return; fi
+    say "Boot attempt $try timed out; shutting down and retrying"
+    limit 60 xcrun simctl shutdown "$udid" 2>/dev/null || true
+    [[ $try -eq 2 ]] && { limit 60 xcrun simctl erase "$udid" || true; }
+  done
+  die "Simulator didn't boot after 3 attempts"
+}
+
 duo_displays() {
   local msg; msg=$(limit 30 xcrun simctl io "$1" screenshot "$(mktemp -u).png" 2>&1 || true)
   printf '%s\n' "$msg" | python3 -c '
@@ -99,8 +112,7 @@ shots() {
   say "Building for $SIM_NAME ($udid)"
   build_sim "$udid"
   say "Booting"
-  xcrun simctl boot "$udid" 2>/dev/null || true
-  limit 300 xcrun simctl bootstatus "$udid" -b || die "Simulator didn't boot in 5 minutes"
+  boot_sim "$udid"
   say "Installing"
   xcrun simctl install "$udid" build/sim/Build/Products/Debug-iphonesimulator/GoldenPixel.app
   # The device profile, so the report can quote the simulator's own screen numbers.

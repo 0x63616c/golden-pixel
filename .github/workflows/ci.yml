@@ -59,7 +59,7 @@ jobs:
       - name: Core tests (macOS)
         run: swift test
       - name: Simulator build and screenshots
-        timeout-minutes: 30
+        timeout-minutes: 45
         run: ios/ios.sh shots "$RUNNER_TEMP/shots"
       - name: Grid-check the simulator screenshots
         run: |
