@@ -15,13 +15,23 @@ BUNDLE_ID=co.worldwidewebb.goldenpixel
 SIM_NAME="GP Duo"
 SIM_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-Duo
 
+# Run a command with a time limit (macOS has no `timeout`).
+limit() { local secs=$1; shift; perl -e 'alarm shift; exec @ARGV' "$secs" "$@"; }
+
 say() { printf '\033[1;36m==> %s\033[0m\n' "$*"; }
 die() { printf '\033[1;31mxx  %s\033[0m\n' "$*" >&2; exit 1; }
 
 # Run xcodebuild quietly; on failure, show the errors and explain the common signing problems.
 xbuild() {
   local log; log=$(mktemp)
-  if xcodebuild "$@" >"$log" 2>&1; then rm -f "$log"; return; fi
+  if [[ -n "${CI:-}" ]]; then
+    # CI: stream the interesting lines so a slow or stuck build is visible in the log.
+    set +e
+    xcodebuild "$@" 2>&1 | tee "$log" | grep --line-buffered -E "error:|\*\* |Resolve Package|Fetching|CompileSwift.*GoldenPixel"
+    local rc=${PIPESTATUS[0]}
+    set -e
+    if [[ $rc -eq 0 ]]; then rm -f "$log"; return; fi
+  elif xcodebuild "$@" >"$log" 2>&1; then rm -f "$log"; return; fi
   grep -E "error:|BUILD FAILED|ARCHIVE FAILED|EXPORT FAILED" "$log" | sort -u | head -40 >&2
   if grep -q "No Accounts" "$log"; then
     die "Xcode isn't signed in to your Apple account (Xcode > Settings > Accounts, team X9E4HG27NK)."
@@ -47,6 +57,7 @@ for devs in json.load(sys.stdin)['devices'].values():
     for d in devs:
         if d['name'] == '$SIM_NAME': print(d['udid']); sys.exit()")
   [[ -n "$udid" ]] || udid=$(xcrun simctl create "$SIM_NAME" "$SIM_TYPE")
+  [[ -n "$udid" ]] || die "Could not create a $SIM_TYPE simulator (xcrun simctl list devicetypes)"
   echo "$udid"
 }
 
@@ -54,7 +65,8 @@ build_sim() {
   ensure_project
   local udid=$1
   xbuild -project GoldenPixel.xcodeproj -scheme GoldenPixel -configuration Debug -sdk iphonesimulator \
-    -destination "platform=iOS Simulator,id=$udid" -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO build
+    -destination "platform=iOS Simulator,id=$udid" -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO \
+    -skipPackagePluginValidation build
 }
 
 sim() {
@@ -70,27 +82,32 @@ sim() {
 shots() {
   local out=${1:-build/shots}
   mkdir -p "$out"
-  local udid; udid=$(sim_udid)
+  say "Device types with Duo in the name:"
   xcrun simctl list devicetypes | grep -i duo || true
+  local udid; udid=$(sim_udid)
   say "Building for $SIM_NAME ($udid)"
   build_sim "$udid"
+  say "Booting"
   xcrun simctl boot "$udid" 2>/dev/null || true
-  xcrun simctl bootstatus "$udid" -b
+  limit 300 xcrun simctl bootstatus "$udid" -b || die "Simulator didn't boot in 5 minutes"
+  say "Installing"
   xcrun simctl install "$udid" build/sim/Build/Products/Debug-iphonesimulator/GoldenPixel.app
   # The device profile, so the report can quote the simulator's own screen numbers.
   local profile
   profile=$(find "$(xcode-select -p)/../Developer/Platforms/iPhoneOS.platform" /Library/Developer/CoreSimulator /Applications/Xcode*.app -path "*iPhone Duo*.simdevicetype*" -name profile.plist 2>/dev/null | head -1 || true)
   [[ -n "$profile" ]] && plutil -convert json -o "$out/duo-profile.json" "$profile" || true
   for scene in title start mid zoom upgrades late skills gold; do
-    xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
+    say "Scene $scene"
+    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
     sleep 4
     for display in internal external; do
-      xcrun simctl io "$udid" screenshot --display="$display" "$out/$scene-$display.png" 2>/dev/null || true
+      limit 30 xcrun simctl io "$udid" screenshot --display="$display" "$out/$scene-$display.png" 2>/dev/null || true
     done
-    [[ -f "$out/$scene-internal.png" ]] || xcrun simctl io "$udid" screenshot "$out/$scene.png"
+    [[ -f "$out/$scene-internal.png" ]] || limit 30 xcrun simctl io "$udid" screenshot "$out/$scene.png"
   done
   for scene in start late gold; do
-    xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
+    say "Recording $scene"
+    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
     sleep 1
     xcrun simctl io "$udid" recordVideo --codec=h264 --force "$out/$scene.mp4" &
     local rec=$!

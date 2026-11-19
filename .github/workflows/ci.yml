@@ -59,12 +59,14 @@ jobs:
       - name: Core tests (macOS)
         run: swift test
       - name: Simulator build and screenshots
+        timeout-minutes: 30
         run: ios/ios.sh shots "$RUNNER_TEMP/shots"
       - name: Grid-check the simulator screenshots
         run: |
           python3 -m pip install --quiet pillow 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow
           python3 tools/gridcheck.py "$RUNNER_TEMP"/shots/*.png
       - name: Device build (unsigned)
+        timeout-minutes: 20
         run: |
           cd ios
           xcodebuild -project GoldenPixel.xcodeproj -scheme GoldenPixel -configuration Release \
