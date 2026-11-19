@@ -1,0 +1,79 @@
+# The gate on every PR and on main: the Swift core's tests on Linux and macOS, then an iOS
+# simulator build with screenshots of staged scenes on the iPhone Duo simulator.
+#
+# Public repo lockdown: this workflow never touches secrets, runs only on GitHub-hosted
+# runners, and fork PRs additionally need maintainer approval (repo Actions setting).
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  core:
+    name: Core tests (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - run: swift --version
+      - run: swift test
+      - name: Render scenes and grid-check them
+        run: |
+          swift run -c release gp-render all build/render
+          python3 -m pip install --quiet pillow
+          python3 tools/gridcheck.py build/render/*.png
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: renders
+          path: build/render
+          if-no-files-found: ignore
+
+  ios:
+    name: iOS build, tests and Duo screenshots
+    # Fork PRs can't reach this job's macOS minutes; same-repo PRs, main and manual runs only.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: xcode-27
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Toolchain
+        run: |
+          xcodebuild -version
+          swift --version
+          command -v xcodegen >/dev/null || brew install xcodegen
+      - name: Core tests (macOS)
+        run: swift test
+      - name: Simulator build and screenshots
+        timeout-minutes: 45
+        run: ios/ios.sh shots "$RUNNER_TEMP/shots"
+      - name: Grid-check the simulator screenshots
+        run: |
+          python3 -m pip install --quiet pillow 2>/dev/null || python3 -m pip install --quiet --break-system-packages pillow
+          python3 tools/gridcheck.py --corner 120 "$RUNNER_TEMP"/shots/*.png
+      - name: Device build (unsigned)
+        timeout-minutes: 20
+        run: |
+          cd ios
+          xcodebuild -project GoldenPixel.xcodeproj -scheme GoldenPixel -configuration Release \
+            -destination generic/platform=iOS -derivedDataPath build/device CODE_SIGNING_ALLOWED=NO build -quiet
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: duo-screenshots
+          path: ${{ runner.temp }}/shots
+          if-no-files-found: ignore

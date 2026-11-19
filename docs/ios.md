@@ -18,7 +18,7 @@ the `duo-screenshots` artifact.
 
 - One art pixel = **6 x 6 device pixels**. 2853 / 6 = 475, 2007 / 6 = 334, so the canvas is
   **475 x 334** art pixels (2850 x 2004 px, centred with 1.5 px to spare per side).
-- A cell is **8 x 8** art pixels; the board is **41 x 41** cells = 328 art pixels square, so it
+- A cell is **10 x 10** art pixels; the board is **33 x 33** cells = 330 art pixels square, so it
   fills the screen's height. The panel takes the remaining 141 x 334 on the right.
 - Text is Pixel Operator 8 (7-pixel caps); HUD icons are 7 x 7 to match.
 - The board can zoom to 2x, 3x or 4x (12, 18, 24 device pixels per board art pixel). The UI
