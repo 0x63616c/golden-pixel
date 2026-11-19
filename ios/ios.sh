@@ -94,6 +94,23 @@ boot_sim() {
   die "Simulator didn't boot after 3 attempts"
 }
 
+# simctl has no fold control, so use the hinge CLI (MIT, pinned) to unfold the Duo simulator.
+HINGE_REPO=https://github.com/artemnovichkov/hinge.git
+HINGE_SHA=06cb720276281da7f1aadd3874acb0d0ae5eb2b5
+unfold() {
+  local dir=build/tools/hinge
+  if [[ ! -x "$dir/bin/hinge" ]]; then
+    rm -rf "$dir"; mkdir -p "$dir"
+    git -C "$dir" init -q
+    git -C "$dir" fetch -q --depth 1 "$HINGE_REPO" "$HINGE_SHA"
+    git -C "$dir" checkout -q FETCH_HEAD
+  fi
+  say "Unfolding the Duo flat"
+  HINGE_DEVICE=$1 limit 120 "$dir/bin/hinge" open || say "hinge open failed; screenshots may be black"
+  sleep 4
+  HINGE_DEVICE=$1 limit 60 "$dir/bin/hinge" posture || true
+}
+
 duo_displays() {
   local msg; msg=$(limit 30 xcrun simctl io "$1" screenshot "$(mktemp -u).png" 2>&1 || true)
   printf '%s\n' "$msg" | python3 -c '
@@ -122,6 +139,10 @@ shots() {
   # The Duo simulator has two displays; the inner (larger) one is the game's target.
   local inner outer
   read -r inner outer < <(duo_displays "$udid")
+  if [[ -n "$outer" ]]; then
+    # A booted Duo starts folded with the inner screen black; unfold it flat.
+    unfold "$udid"
+  fi
   say "Inner display ${inner:-default}, outer display ${outer:-none}"
   mkdir -p "$out/outer"
   for scene in title start mid zoom upgrades late skills gold; do

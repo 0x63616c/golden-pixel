@@ -16,6 +16,11 @@ from PIL import Image
 def check(path, n, min_solid):
     im = Image.open(path).convert("RGB")
     w, h = im.size
+    colours = im.getcolors(1 << 16)
+    if colours is not None and len(colours) < 8:
+        # A blank frame (e.g. a folded Duo's black inner screen) is trivially "on grid".
+        print(f"FAIL {path}: only {len(colours)} colours, the screenshot is blank")
+        return False
     px = im.load()
     best = None
     for oy in range(n):
