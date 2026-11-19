@@ -1,0 +1,66 @@
+# Xcode project for the native iOS app. Generated with `just ios-project` (xcodegen).
+# Don't edit GoldenPixel.xcodeproj by hand: change this file instead.
+#
+# The game is the GoldenPixelCore Swift package at the repo root (rules, simulation and
+# the pixel renderer); App/ is the thin iOS shell (SwiftUI window, Metal presentation,
+# touch, haptics, sound, save file).
+
+name: GoldenPixel
+options:
+  bundleIdPrefix: co.worldwidewebb
+  deploymentTarget:
+    iOS: "26.0"
+  createIntermediateGroups: true
+
+packages:
+  GoldenPixelCore:
+    path: ..
+
+settings:
+  base:
+    # Your Apple Developer team. Change here if you switch accounts.
+    DEVELOPMENT_TEAM: X9E4HG27NK
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "5.0"
+
+targets:
+  GoldenPixel:
+    type: application
+    platform: iOS
+    sources:
+      - path: ../App
+      - path: Assets.xcassets
+      - path: Info.plist
+        buildPhase: none
+    dependencies:
+      - package: GoldenPixelCore
+        product: GoldenPixelCore
+    settings:
+      base:
+        PRODUCT_NAME: GoldenPixel
+        PRODUCT_BUNDLE_IDENTIFIER: co.worldwidewebb.goldenpixel
+        INFOPLIST_FILE: Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        # iPhone only: built for the iPhone Duo's inner display, letterboxed elsewhere.
+        TARGETED_DEVICE_FAMILY: "1"
+        SUPPORTS_MACCATALYST: NO
+        SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD: NO
+        SUPPORTS_XR_DESIGNED_FOR_IPHONE_IPAD: NO
+        ENABLE_USER_SCRIPT_SANDBOXING: YES
+        SWIFT_OPTIMIZATION_LEVEL: "-O"
+      configs:
+        Debug:
+          SWIFT_OPTIMIZATION_LEVEL: "-Onone"
+
+schemes:
+  GoldenPixel:
+    build:
+      targets:
+        GoldenPixel: all
+    run:
+      config: Debug
+    archive:
+      config: Release
