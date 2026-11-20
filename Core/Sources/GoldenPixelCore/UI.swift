@@ -12,17 +12,26 @@ public enum Action: Equatable, Sendable {
     case backToMenu
     case setting(Int)
     case resetProgress
+    /// The in-game pause card (the panel's MENU button): RESUME, RESTART LEVEL, MAIN MENU.
+    case pause
+    case resume
+    /// Asks before restarting: a confirm card with RESTART and CANCEL.
+    case restartLevel
+    case confirmRestart
+    case cancelRestart
     // Game
     case openMenu
     case openSkills
     case closeSkills
     case selectSkill(String)
     case buySkill(String)
-    /// Tap a ball row: its info sheet. Drag from it: aim and buy.
+    /// Tap a ball row: select that type (tap the selected one again, or hold, for its info
+    /// sheet). Press an open spot on the board and drag out to launch one of the selected type.
     case ballRow(BallKind)
     case buyBall(BallKind)
     case closeSheet
-    /// Backgrounds: where drags pan and pinches zoom.
+    /// Backgrounds: where drags pan and pinches zoom. On `.board`, a short hold on an open cell
+    /// places a ball and a drag from it aims; a quick drag anywhere pans.
     case board
     case tree
     case panel
@@ -43,21 +52,6 @@ public struct Tooltip: Sendable {
     public var until: Double
 }
 
-/// A slingshot aim in progress: dragged from `from` to `to`; the ball flies the other way.
-public struct Aim: Sendable, Equatable {
-    public var kind: BallKind
-    public var from: Point
-    public var to: Point
-    /// Launch direction (opposite the drag), or nil while the pull is too short to count.
-    public var direction: (x: Double, y: Double)? {
-        let dx = Double(from.x - to.x), dy = Double(from.y - to.y)
-        let len = (dx * dx + dy * dy).squareRoot()
-        return len < Double(Aim.minPull) ? nil : (dx / len, dy / len)
-    }
-    public static let minPull = 10
-    public static func == (a: Aim, b: Aim) -> Bool { a.kind == b.kind && a.from == b.from && a.to == b.to }
-}
-
 public struct UIState: Sendable {
     public var screen: Screen = .menu
     /// Shorthand for "on the game screen" (tests and scenes).
@@ -70,7 +64,16 @@ public struct UIState: Sendable {
     public var selectedSkill: String?
     /// The ball type whose info sheet is open.
     public var sheet: BallKind?
-    public var aim: Aim?
+    /// The ball type a tap on the board buys.
+    public var selected: BallKind = .basic
+    /// A ball being placed: held on an open cell at `from`, aimed toward `to` (canvas).
+    public var launch: LaunchDrag?
+    /// A finger that went down on an open cell: a short hold turns it into a placement, a
+    /// quick drag pans instead.
+    var pressOnOpen: Point?
+    /// The in-game pause card, and its restart confirmation.
+    public var paused = false
+    public var confirmingRestart = false
     public var tooltip: Tooltip?
     /// Reset needs a second tap before this time.
     public var confirmResetUntil = -1.0
@@ -84,14 +87,16 @@ public struct UIState: Sendable {
     public var treeCamera: Camera
     /// What a one-finger drag does, decided where it starts.
     var dragMode: DragMode = .none
-    var lastTap: (at: Point, time: Double)?
 
     public init() {
         let L = layout
-        camera = Camera(boardW: 330, boardH: 330, viewW: L.board.w, viewH: L.board.h)
-        treeCamera = Camera(boardW: SkillTree.size.w, boardH: SkillTree.size.h, viewW: L.width, viewH: L.height, levels: Camera.treeLevels)
-        // Open on the top of the tree: the ball branches.
-        treeCamera.look(at: Double(SkillTree.size.w) / 2, 0)
+        camera = Camera(boardW: 330, boardH: 330, viewW: L.board.w, viewH: L.board.h, overscroll: 1)
+        // Some overscroll, so a small early tree can sit in the middle of the screen.
+        treeCamera = Camera(boardW: SkillTree.size.w, boardH: SkillTree.size.h, viewW: L.width, viewH: L.height, levels: Camera.treeLevels, overscroll: 0.5)
+        // Open on what a new game can see: the root and the basic ball above it. Opening the
+        // tree re-centres on whatever is showing by then (`SkillTree.focus`).
+        let f = SkillTree.focus(ranks: SkillNode.startingRanks)
+        treeCamera.look(at: f.x, f.y)
     }
 }
 
@@ -103,7 +108,41 @@ public enum SkillTree {
     /// 32 px of extra room at the top (under the header) and 80 at the bottom (under the card).
     public static let size = (w: (maxX - minX + 4) * SkillNode.unit, h: (maxY - minY + 4) * SkillNode.unit + 112)
     public static func position(_ s: SkillNode) -> (x: Double, y: Double) {
-        (Double((s.x - minX + 2) * SkillNode.unit), Double((s.y - minY + 2) * SkillNode.unit + 32))
+        let p = point(s)
+        return (Double(p.x), Double(p.y))
+    }
+    /// A node's centre in whole tree art pixels (a multiple of 8, so it stays on the grid at
+    /// zoom 0.5 too).
+    public static func point(_ s: SkillNode) -> Point {
+        Point((s.x - minX + 2) * SkillNode.unit, (s.y - minY + 2) * SkillNode.unit + 32)
+    }
+
+    /// The one node that needs nothing: every other node hangs off it.
+    public static let root = "core"
+
+    /// The link from prerequisite `from` to the node that needs it, as the corners of an
+    /// orthogonal path in tree art pixels (first point on `from`'s centre, last on `to`'s):
+    /// straight when they share a row or column, otherwise out to halfway between their rows,
+    /// across, and on in. Siblings share the halfway bar, so a fork reads as one bracket.
+    public static func route(from: SkillNode, to: SkillNode) -> [Point] {
+        let a = point(from), b = point(to)
+        if a.x == b.x || a.y == b.y { return [a, b] }
+        let mid = (a.y + b.y) / 2
+        return [a, Point(a.x, mid), Point(b.x, mid), b]
+    }
+
+    /// Where the tree camera should look: the selected node if it is showing, otherwise the
+    /// middle of everything that is showing (owned and buyable-next nodes), nudged down a little
+    /// so it centres in the space between the header and the card.
+    public static func focus(ranks: [String: Int], selected: String? = nil) -> (x: Double, y: Double) {
+        if let id = selected, let s = SkillNode.byID[id], Skills.visible(id, ranks: ranks) {
+            let p = point(s)
+            return (Double(p.x), Double(p.y + 16))
+        }
+        let pts = SkillNode.all.filter { Skills.visible($0.id, ranks: ranks) }.map(point)
+        guard let x0 = pts.map(\.x).min(), let x1 = pts.map(\.x).max(),
+              let y0 = pts.map(\.y).min(), let y1 = pts.map(\.y).max() else { return position(SkillNode.byID[root]!) }
+        return (Double(x0 + x1) / 2, Double(y0 + y1) / 2 + 16)
     }
 }
 
@@ -146,10 +185,28 @@ public struct Layout: Equatable, Sendable {
     }
 }
 
-enum DragMode: Sendable, Equatable { case none, pan, tree, aim, ignore }
+/// A ball being placed on the board: pressed at `from` (an open cell), aimed at `to`. It flies
+/// from `from` toward `to`; a press without a pull uses the last direction.
+public struct LaunchDrag: Equatable, Sendable {
+    public var from: Point
+    public var to: Point
+    public init(from: Point, to: Point) { self.from = from; self.to = to }
+    /// The aim (canvas pixels, not normalised), or nil while the pull is too short to count.
+    public var pull: (x: Double, y: Double)? {
+        let dx = Double(to.x - from.x), dy = Double(to.y - from.y)
+        return dx * dx + dy * dy < Double(LaunchDrag.minPull * LaunchDrag.minPull) ? nil : (dx, dy)
+    }
+    public static let minPull = 6
+}
+
+enum DragMode: Sendable, Equatable { case none, pan, tree, launch, ignore }
 
 public enum Gesture: Equatable, Sendable {
+    /// A first finger went down (it may yet become a tap, long-press or drag).
+    case down(Point)
     case tap(Point, time: Double = 0)
+    /// The finger has rested still for `PointerTracker.holdTime` (before any long-press).
+    case hold(Point)
     case longPress(Point)
     case drag(from: Point, to: Point)
     case release(Point)
@@ -163,12 +220,14 @@ public enum Gesture: Equatable, Sendable {
 /// nothing more is reported until every finger is up.
 public struct PointerTracker: Sendable {
     public static let dragThreshold = 3
+    public static let holdTime = 0.2
     public static let longPressTime = 0.42
     var start: Point?
     var last = Point(0, 0)
     var startTime = 0.0
     var dragging = false
     var longFired = false
+    var holdFired = false
     var touches: [Int: Point] = [:]
     var order: [Int] = []
     var pinching = false
@@ -181,8 +240,8 @@ public struct PointerTracker: Sendable {
     public mutating func began(_ p: Point, id: Int = 0, at t: Double) -> [Gesture] {
         touches[id] = p; order.append(id)
         if touches.count == 1 && !swallow {
-            start = p; last = p; startTime = t; dragging = false; longFired = false
-            return []
+            start = p; last = p; startTime = t; dragging = false; longFired = false; holdFired = false
+            return [.down(p)]
         }
         guard touches.count >= 2, !pinching else { return [] }
         var out: [Gesture] = []
@@ -209,7 +268,8 @@ public struct PointerTracker: Sendable {
             return [.pinch(center: m, factor: d / pinchDist, dx: m.x - pinchMid.x, dy: m.y - pinchMid.y)]
         }
         guard let s = start else { return [] }
-        if !dragging, abs(p.x - s.x) + abs(p.y - s.y) > PointerTracker.dragThreshold, !longFired { dragging = true }
+        // A drag may still start after a long press: hold on a spot, then pull out to aim.
+        if !dragging, abs(p.x - s.x) + abs(p.y - s.y) > PointerTracker.dragThreshold { dragging = true }
         defer { last = p }
         return dragging ? [.drag(from: last, to: p)] : []
     }
@@ -230,51 +290,53 @@ public struct PointerTracker: Sendable {
     }
 
     public mutating func tick(at t: Double) -> [Gesture] {
-        guard !pinching, let s = start, !dragging, !longFired, t - startTime >= PointerTracker.longPressTime else { return [] }
-        longFired = true
-        return [.longPress(s)]
+        guard !pinching, let s = start, !dragging, !longFired else { return [] }
+        var out: [Gesture] = []
+        if !holdFired, t - startTime >= PointerTracker.holdTime { holdFired = true; out.append(.hold(s)) }
+        if t - startTime >= PointerTracker.longPressTime { longFired = true; out.append(.longPress(s)) }
+        return out
     }
 }
 
 extension Game {
     public func handle(_ g: Gesture) {
         switch g {
-        case .tap(let p, let time):
+        case .down(let p):
+            // On an open, visible cell: a short hold places a ball, a quick drag pans.
+            ui.launch = nil
+            ui.pressOnOpen = nil
+            if ui.screen == .game, hit(at: p)?.action == .board, let i = boardCell(p), board.kind[i] == .empty, board.revealed[i] {
+                ui.pressOnOpen = p
+            }
+        case .hold(let p):
+            if let o = ui.pressOnOpen, o == p, ui.dragMode == .none {
+                ui.launch = LaunchDrag(from: p, to: p)
+                events.append(.tap)
+            }
+        case .tap(let p, _):
             ui.tooltip = nil
+            defer { ui.launch = nil; ui.pressOnOpen = nil }
             guard let h = hit(at: p) else { return }
-            // Double-tap on the board toggles the zoom; a single tap says what's there.
-            if h.action == .board {
-                if let last = ui.lastTap, time - last.time < Game.doubleTapTime,
-                   abs(last.at.x - p.x) + abs(last.at.y - p.y) <= 10 {
-                    let v = viewPoint(p)
-                    ui.camera.toggle(at: v.x, v.y)
-                    ui.lastTap = nil
-                    return
-                }
-                ui.lastTap = (p, time)
-            } else {
-                ui.lastTap = nil
+            // A plain tap on an open spot launches along the last direction.
+            if h.action == .board, ui.pressOnOpen != nil || ui.launch != nil {
+                launchSelected(ui.launch ?? LaunchDrag(from: p, to: p)); return
             }
             perform(h.action, at: p)
         case .longPress(let p):
+            // Holding on an open spot keeps the placement: pull out to aim.
+            if ui.launch != nil { return }
             guard let h = hit(at: p) else { return }
             if !h.info.isEmpty { ui.tooltip = Tooltip(lines: h.info, at: p, until: self.time + 3) }
             else if h.action == .board { showCellInfo(p) }
+            else if case .ballRow(let k) = h.action { ui.selected = k; ui.sheet = k; events.append(.tap) }
         case .drag(let from, let to):
+            ui.pressOnOpen = nil
             if ui.dragMode == .none {
                 // Decided once, where the finger went down.
                 let h = hit(at: from)?.action ?? .none
                 switch h {
-                case .board: ui.dragMode = .pan
+                case .board: ui.dragMode = ui.launch != nil ? .launch : .pan
                 case .tree, .selectSkill: ui.dragMode = .tree
-                case .ballRow(let k) where mods.unlocked.contains(k) && ui.screen == .game && !ui.skillsOpen && ui.sheet == nil:
-                    ui.dragMode = .aim
-                    ui.aim = Aim(kind: k, from: from, to: from)
-                case .buyBall(let k) where mods.unlocked.contains(k):
-                    // Drag the sheet's BUY button to aim as well.
-                    ui.dragMode = .aim
-                    ui.sheet = nil
-                    ui.aim = Aim(kind: k, from: from, to: from)
                 default: ui.dragMode = .ignore
                 }
                 ui.tooltip = nil
@@ -282,21 +344,22 @@ extension Game {
             switch ui.dragMode {
             case .pan: ui.camera.pan(Double(to.x - from.x), Double(to.y - from.y))
             case .tree: ui.treeCamera.pan(Double(to.x - from.x), Double(to.y - from.y))
-            case .aim: ui.aim?.to = to
+            case .launch: ui.launch?.to = to
             case .none, .ignore: break
             }
         case .release:
-            if ui.dragMode == .aim, let a = ui.aim, let d = a.direction {
-                buyBall(a.kind, direction: d)
-            }
-            ui.aim = nil
+            if let l = ui.launch, ui.dragMode == .launch || ui.dragMode == .none { launchSelected(l) }
+            ui.launch = nil
+            ui.pressOnOpen = nil
             ui.dragMode = .none
         case .pinch(let center, let factor, let dx, let dy):
             ui.tooltip = nil
+            ui.launch = nil
+            ui.pressOnOpen = nil
             if ui.skillsOpen {
                 ui.treeCamera.pinch(factor: factor, at: Double(center.x) + 0.5, Double(center.y) + 0.5)
                 ui.treeCamera.pan(Double(dx), Double(dy))
-            } else if ui.screen == .game, ui.sheet == nil {
+            } else if ui.screen == .game, ui.sheet == nil, !ui.paused {
                 let v = viewPoint(center)
                 ui.camera.pinch(factor: factor, at: v.x, v.y)
                 ui.camera.pan(Double(dx), Double(dy))
@@ -304,12 +367,9 @@ extension Game {
         case .pinchEnded:
             ui.camera.settle()
             ui.treeCamera.settle()
-            ui.aim = nil
             ui.dragMode = .none
         }
     }
-
-    static let doubleTapTime = 0.32
 
     /// Canvas point → view-local point in the board's camera view.
     func viewPoint(_ p: Point) -> (x: Double, y: Double) {
@@ -326,6 +386,19 @@ extension Game {
         guard b.x >= 0, b.y >= 0 else { return nil }
         let x = Int(b.x) / Tuning.cellPixels, y = Int(b.y) / Tuning.cellPixels
         return board.inside(x, y) ? board.index(x, y) : nil
+    }
+
+    /// A press (and pull) on an open cell: buy a ball of the selected type right there, flying
+    /// toward where the finger was pulled (or the last direction, for a plain tap).
+    func launchSelected(_ l: LaunchDrag) {
+        let k = mods.unlocked.contains(ui.selected) ? ui.selected : .basic
+        let v = viewPoint(l.from)
+        let b = ui.camera.toBoard(v.x, v.y)
+        let cp = Double(Tuning.cellPixels)
+        let ok = buyBall(k, at: (b.x / cp, b.y / cp), direction: l.pull)
+        if !ok, balls.count < Tuning.maxBalls {
+            ui.tooltip = Tooltip(lines: ["NEED " + coins(ballCost(k)) + " COINS"], at: l.from, until: time + 1.2)
+        }
     }
 
     func showCellInfo(_ p: Point) {
@@ -361,11 +434,13 @@ extension Game {
             }
         case .openMenu:
             ui.screen = .menu
-            ui.sheet = nil; ui.skillsOpen = false
+            ui.sheet = nil; ui.skillsOpen = false; ui.paused = false; ui.confirmingRestart = false
             events.append(.tap)
         case .openSkills:
             ui.skillsOpen = true
             ui.sheet = nil
+            let f = SkillTree.focus(ranks: progress.skillRanks, selected: ui.selectedSkill)
+            ui.treeCamera.look(at: f.x, f.y)
             events.append(.tap)
         case .closeSkills:
             ui.skillsOpen = false
@@ -374,12 +449,34 @@ extension Game {
             ui.selectedSkill = id
             events.append(.tap)
         case .buySkill(let id): buySkill(id)
+        case .pause:
+            ui.paused = true; ui.confirmingRestart = false; ui.sheet = nil; ui.launch = nil
+            events.append(.tap)
+        case .resume:
+            ui.paused = false; ui.confirmingRestart = false
+            events.append(.tap)
+        case .restartLevel:
+            ui.confirmingRestart = true
+            events.append(.tap)
+        case .cancelRestart:
+            ui.confirmingRestart = false
+            events.append(.tap)
+        case .confirmRestart:
+            ui.confirmingRestart = false; ui.paused = false
+            restartLevel()
+            ui.screen = .game
+            events.append(.tap)
         case .ballRow(let k):
-            ui.sheet = k
+            if ui.selected == k { ui.sheet = k } else { ui.selected = k }
             events.append(.tap)
         case .buyBall(let k):
-            if mods.unlocked.contains(k) { buyBall(k) }
-            else { ui.sheet = nil; ui.skillsOpen = true; ui.selectedSkill = "u-\(k.rawValue)"; events.append(.tap) }
+            if mods.unlocked.contains(k) { ui.selected = k; buyBall(k) }
+            else {
+                ui.sheet = nil; ui.skillsOpen = true; ui.selectedSkill = "u-\(k.rawValue)"
+                let f = SkillTree.focus(ranks: progress.skillRanks, selected: ui.selectedSkill)
+                ui.treeCamera.look(at: f.x, f.y)
+                events.append(.tap)
+            }
         case .closeSheet:
             ui.sheet = nil
             events.append(.tap)

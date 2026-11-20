@@ -39,7 +39,7 @@ public enum Palette {
     /// Explored floor: one flat step above the fog's pure black.
     public static let floor = rgb(0x0e1016)
     /// Unbreakable rock: a neutral dark grey, never brighter than the blocks around it.
-    public static let wall = rgb(0x2b2b2e)
+    public static let wall = rgb(0x262629)
 
     public static let gold = rgb(0xffd23f)
     public static let goldLight = rgb(0xffe98a)
@@ -54,11 +54,16 @@ public enum Palette {
     /// Buttons and selection.
     public static let accent = rgb(0x3d7bff)
     public static let accentDim = rgb(0x1c3a7a)
+    public static let accentLight = rgb(0x74a3ff)
     public static let danger = rgb(0xff4f5e)
+    public static let dangerLight = rgb(0xff8a94)
+    /// Ink on gold buttons: a deep warm brown that reads as black but sits with the gold.
+    public static let goldInk = rgb(0x2b1d00)
 
-    /// The durability ladder, faintest (one hit left) to brightest (toughest): one blue hue.
-    /// Index = `Economy.ladderStep`; a fresh tier-t block shows step t + 1.
-    public static let ladder: [Pixel] = [0x1d2c52, 0x22408a, 0x2858c4, 0x3a78f0, 0x74a3ff, 0xb9d2ff].map { rgb($0) }
+    /// The durability ladder, palest (one hit left) to deepest (toughest): one blue hue, so a
+    /// block gets lighter as it wears down. Index = `Economy.ladderStep`; a fresh tier-t block
+    /// shows step t + 1.
+    public static let ladder: [Pixel] = [0xb9d2ff, 0x74a3ff, 0x3a78f0, 0x2858c4, 0x22408a, 0x1d2c52].map { rgb($0) }
 
     /// The colour a fresh block of tier t shows.
     public static func tier(_ t: Int) -> Pixel { ladder[min(ladder.count - 1, t + 1)] }

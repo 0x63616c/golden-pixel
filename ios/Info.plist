@@ -30,12 +30,12 @@
 		<key>UIColorName</key>
 		<string>LaunchBackground</string>
 	</dict>
-	<!-- The layout follows the canvas shape: wide puts the panel on the right, tall puts it
-	     underneath. On the iPhone Duo's inner panel (mounted sideways) either way fills the
-	     screen edge to edge at 9 device pixels per art pixel. -->
+	<!-- Landscape only. The cover screen honours this; Apple says the Duo's inner display may
+	     ignore it (and Split View can hand us a tall half), so the layout still follows the
+	     canvas shape: wide puts the panel on the right, tall puts it underneath. Never add
+	     UIRequiresFullScreen: the system would rescale the frame and break the pixel grid. -->
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
-		<string>UIInterfaceOrientationPortrait</string>
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>

@@ -2,14 +2,20 @@ import XCTest
 @testable import GoldenPixelCore
 
 final class EconomyTests: XCTestCase {
-    func testFirstBasicBallIsFreeAndPricesRise() {
-        XCTAssertEqual(Economy.ballCost(.basic, owned: 1), 25)
-        XCTAssertEqual(Economy.ballCost(.basic, owned: 0), 25)
-        XCTAssertGreaterThan(Economy.ballCost(.basic, owned: 2), 25)
+    /// A level starts with no balls and exactly the coins for the first basic one.
+    func testTheFirstBallCostsTheStartingCoinsAndPricesRise() {
+        XCTAssertEqual(Economy.ballCost(.basic, owned: 0), Tuning.startCoins)
+        XCTAssertGreaterThan(Economy.ballCost(.basic, owned: 1), Tuning.startCoins)
+        let g = Game()
+        XCTAssertTrue(g.balls.isEmpty)
+        XCTAssertEqual(g.progress.money, Tuning.startCoins)
+        XCTAssertTrue(g.buyBall(.basic))
+        XCTAssertEqual(g.progress.money, 0)
+        XCTAssertEqual(g.balls.count, 1)
         for k in BallKind.allCases {
             var last = 0.0
             for n in 0..<30 {
-                let c = Economy.ballCost(k, owned: n + (k == .basic ? 1 : 0))
+                let c = Economy.ballCost(k, owned: n)
                 XCTAssertGreaterThan(c, last, "\(k) at \(n)")
                 last = c
             }
@@ -18,11 +24,6 @@ final class EconomyTests: XCTestCase {
 
     func testSwarmDiscount() {
         XCTAssertEqual(Economy.ballCost(.basic, owned: 5, swarm: true), (Economy.ballCost(.basic, owned: 5) * 0.6).rounded(), accuracy: 1)
-    }
-
-    func testComboCapsAtThreeTimes() {
-        XCTAssertEqual(Economy.comboMultiplier(1), 1)
-        XCTAssertEqual(Economy.comboMultiplier(1000), Tuning.comboMax)
     }
 
     func testOfflineEarningsAreCapped() {
@@ -45,11 +46,11 @@ final class EconomyTests: XCTestCase {
         let n = g.balls.count
         XCTAssertTrue(g.buyBall(.basic))
         XCTAssertEqual(g.balls.count, n + 1)
-        XCTAssertEqual(g.progress.money, 75)
+        XCTAssertEqual(g.progress.money, 100 - Economy.ballCost(.basic, owned: 0))
         XCTAssertFalse(g.buyBall(.fast), "locked until the tree unlocks it")
         XCTAssertEqual(g.events.last, .denied)
         XCTAssertFalse(g.buySkill("core"), "skills cost shards, not coins")
-        XCTAssertEqual(g.progress.money, 75)
+        XCTAssertEqual(g.progress.money, 100 - Economy.ballCost(.basic, owned: 0))
     }
 
     func testSkillsNeedPrerequisitesAndShards() {
@@ -68,8 +69,8 @@ final class EconomyTests: XCTestCase {
         let g = Game(progress: p)
         XCTAssertTrue(g.buySkill("u-fast"))
         XCTAssertTrue(g.mods.unlocked.contains(.fast))
-        XCTAssertEqual(g.progress.ball(.fast).owned, 1)
-        XCTAssertTrue(g.balls.contains { $0.kind == .fast })
+        XCTAssertEqual(g.progress.ball(.fast).owned, 0, "you place the new type yourself")
+        XCTAssertEqual(g.ui.selected, .fast, "and it is ready to place")
         XCTAssertEqual(g.progress.shards, 5 - SkillNode.byID["u-fast"]!.cost)
     }
 

@@ -121,6 +121,29 @@ public enum PixelFont {
 }
 
 /// Compact numbers for a narrow HUD: 999, 1.2K, 12K, 123K, 1.2M ... then 1E36.
+/// Coins as you read them: every digit with thousands commas (1,800, 245,310) below a
+/// million, then two decimals and a suffix (1.24M, 38.5B).
+public func coins(_ v: Double) -> String {
+    if !v.isFinite { return "MAX" }
+    let n = max(0, v)
+    if n < 1_000_000 {
+        var digits = String(Int(n.rounded(.down)))
+        var out = ""
+        while digits.count > 3 { out = "," + digits.suffix(3) + out; digits.removeLast(3) }
+        return digits + out
+    }
+    let suffixes = ["M", "B", "T", "QA", "QI", "SX", "SP", "OC", "NO", "DC"]
+    var x = n / 1_000_000, i = 0
+    while x >= 1000 && i < suffixes.count - 1 { x /= 1000; i += 1 }
+    if x >= 1000 { return compact(n) }
+    let decimals = x < 10 ? 2 : (x < 100 ? 1 : 0)
+    let p = pow(10.0, Double(decimals))
+    let t = Int((x * p).rounded(.down))
+    let whole = t / Int(p), frac = t % Int(p)
+    let fs = decimals == 0 ? "" : "." + String(repeating: "0", count: decimals - String(frac).count) + String(frac)
+    return "\(whole)\(fs)\(suffixes[i])"
+}
+
 public func compact(_ v: Double) -> String {
     if !v.isFinite { return "MAX" }
     let n = max(0, v)

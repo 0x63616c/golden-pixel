@@ -20,6 +20,10 @@ public struct Camera: Equatable, Sendable {
     public var viewH: Int
     /// The zooms the camera may rest at, ascending.
     public let levels: [Double]
+    /// How far past the board's edge the view may go, as a fraction of half the view: 0 keeps
+    /// the view inside the board, 1 lets any board point reach the centre of the view (so a
+    /// spawn near the edge still starts in the middle of the screen).
+    public var overscroll: Double
     public var minZoom: Double { levels.first! }
     public var maxZoom: Double { levels.last! }
     public private(set) var zoom: Double = 1
@@ -29,9 +33,10 @@ public struct Camera: Equatable, Sendable {
     /// Set while easing toward a whole zoom after a pinch or a double-tap.
     public private(set) var target: (zoom: Double, cx: Double, cy: Double)?
 
-    public init(boardW: Int, boardH: Int, viewW: Int, viewH: Int, levels: [Double] = Camera.boardLevels) {
+    public init(boardW: Int, boardH: Int, viewW: Int, viewH: Int, levels: [Double] = Camera.boardLevels, overscroll: Double = 0) {
         self.boardW = boardW; self.boardH = boardH; self.viewW = viewW; self.viewH = viewH
         self.levels = levels
+        self.overscroll = overscroll
         cx = Double(boardW) / 2; cy = Double(boardH) / 2
         clamp(); snapToGrid()
     }
@@ -82,7 +87,8 @@ public struct Camera: Equatable, Sendable {
         func axis(_ v: Double, _ board: Int, _ view: Int) -> Double {
             let half = Double(view) / 2 / zoom
             if half * 2 >= Double(board) { return Double(board) / 2 }
-            return min(Double(board) - half, max(half, v))
+            let reach = half * (1 - c.overscroll)
+            return min(Double(board) - reach, max(reach, v))
         }
         return (axis(x, c.boardW, c.viewW), axis(y, c.boardH, c.viewH))
     }

@@ -139,18 +139,27 @@ final class CameraTests: XCTestCase {
         return Point(g.ui.layout.board.x + Int(v.x), g.ui.layout.board.y + Int(v.y))
     }
 
-    func testDoubleTapAnywhereOnTheBoardZooms() {
-        let (g, r) = game()
-        let b = g.board
-        let block = b.kind.indices.first { b.kind[$0] == .block && b.revealed[$0] }!
-        let p = canvasPoint(g, cell: block % b.size, block / b.size)
-        let hp = b.hp[block]
-        g.handle(.tap(p, time: 1.0))
-        g.handle(.tap(p, time: 1.2))
-        for _ in 0..<120 { g.update(1.0 / 60) }
-        XCTAssertEqual(g.ui.camera.zoom, Camera.closeUp)
-        XCTAssertEqual(b.hp[block], hp, "taps never hit")
-        r.render(g)
+    /// Every level opens with the spawn in the middle of the board view, even though the
+    /// spawn sits near the level's edge: the board camera may look past the edge.
+    func testLevelsStartWithTheSpawnInTheMiddle() {
+        for level in 1...7 {
+            let g = Game(progress: { var p = GoldenPixelCore.Progress(); p.level = level; return p }())
+            let cp = Double(Tuning.cellPixels)
+            let v = g.ui.camera.toView((Double(g.board.spawn.x) + 0.5) * cp, (Double(g.board.spawn.y) + 0.5) * cp)
+            XCTAssertEqual(v.x, Double(g.ui.camera.viewW) / 2, accuracy: 1, "level \(level)")
+            XCTAssertEqual(v.y, Double(g.ui.camera.viewH) / 2, accuracy: 1, "level \(level)")
+        }
+    }
+
+    func testOverscrollLetsAnyBoardPointReachTheCentre() {
+        var c = Camera(boardW: boardSide, boardH: boardSide, viewW: viewW, viewH: viewH, overscroll: 1)
+        c.look(at: 5, Double(boardSide) - 5)
+        let v = c.toView(5, Double(boardSide) - 5)
+        XCTAssertEqual(v.x, Double(viewW) / 2, accuracy: 1)
+        XCTAssertEqual(v.y, Double(viewH) / 2, accuracy: 1)
+        c.pan(-10_000, -10_000)
+        XCTAssertEqual(c.toView(Double(boardSide), Double(boardSide)).x, Double(viewW) / 2, accuracy: 1, "but no further")
+        assertOnGrid(c)
     }
 
     func testDragOnTheBoardAlwaysPans() {
@@ -169,7 +178,7 @@ final class CameraTests: XCTestCase {
 
     func testASecondFingerCancelsTheTapAndPinches() {
         var t = PointerTracker()
-        XCTAssertEqual(t.began(Point(100, 100), id: 1, at: 0), [])
+        XCTAssertEqual(t.began(Point(100, 100), id: 1, at: 0), [.down(Point(100, 100))])
         XCTAssertEqual(t.began(Point(140, 100), id: 2, at: 0.05), [])
         let g = t.moved(Point(160, 100), id: 2, at: 0.1)
         guard case .pinch(let center, let factor, let dx, _)? = g.first else { return XCTFail("expected a pinch") }
@@ -179,7 +188,7 @@ final class CameraTests: XCTestCase {
         XCTAssertEqual(t.ended(Point(160, 100), id: 2, at: 0.2), [.pinchEnded])
         XCTAssertEqual(t.moved(Point(90, 100), id: 1, at: 0.25), [], "the leftover finger is ignored")
         XCTAssertEqual(t.ended(Point(90, 100), id: 1, at: 0.3), [], "and never becomes a tap")
-        XCTAssertEqual(t.began(Point(10, 10), id: 3, at: 1), [])
+        XCTAssertEqual(t.began(Point(10, 10), id: 3, at: 1), [.down(Point(10, 10))])
         XCTAssertEqual(t.ended(Point(10, 10), id: 3, at: 1.1), [.tap(Point(10, 10), time: 1.1)], "fresh touches work again")
     }
 

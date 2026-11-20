@@ -7,7 +7,7 @@ public struct Settings: Codable, Equatable, Sendable {
 }
 
 public struct Progress: Codable, Equatable, Sendable {
-    public var money: Double = 0
+    public var money: Double = Tuning.startCoins
     public var level: Int = 1
     public var maxLevel: Int = 1
     /// One per golden pixel broken, for good: each adds damage and money.
@@ -15,7 +15,7 @@ public struct Progress: Codable, Equatable, Sendable {
     /// Skill-tree currency, from shard pixels. Resets with the tree every level.
     public var shards: Int = 0
     public var skillRanks: [String: Int] = SkillNode.startingRanks
-    public var balls: [String: BallProgress] = [BallKind.basic.rawValue: BallProgress(owned: 1)]
+    public var balls: [String: BallProgress] = [:]
     public var runEarnings: Double = 0
     public var totalEarnings: Double = 0
     /// Smoothed money per second, for offline earnings.

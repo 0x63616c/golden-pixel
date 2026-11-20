@@ -10,7 +10,8 @@
 /// every-other-pixel subsample at 0.5, on the same grid the UI uses.
 ///
 /// The drawing is split by screen: `RenderBoard.swift` (the board and its HUD),
-/// `RenderPanel.swift` (the side panel and ball sheet), `RenderTree.swift` (the skill tree)
+/// `RenderPanel.swift` (the side panel and ball sheet), `RenderPause.swift` (the pause card),
+/// `RenderTree.swift` (the skill tree)
 /// and `RenderMenu.swift` (menu, how to play, settings).
 public final class Renderer {
     public private(set) var canvas: Canvas
@@ -43,12 +44,13 @@ public final class Renderer {
             g.ui.camera.setSizes(boardW: g.board.pixelSize, boardH: g.board.pixelSize, viewW: layout.board.w, viewH: layout.board.h)
             drawBoard(g, layout)
             present(g, layout)
-            drawAim(g, layout)
+            drawLaunchPreview(g, layout)
             drawBoardHUD(g, layout)
             drawPanel(g, layout)
             drawBanners(g, layout)
             if let k = g.ui.sheet { drawBallSheet(g, k) }
             if g.ui.skillsOpen { drawTree(g) }
+            if g.ui.paused { drawPause(g) }
         }
         if let t = g.ui.tooltip, t.until > g.time { drawTooltip(t) }
         g.ui.hits = hits
@@ -56,31 +58,65 @@ public final class Renderer {
 
     func hit(_ r: Rect, _ a: Action, _ info: [String] = []) { hits.append(Hit(rect: r, action: a, info: info)) }
 
-    enum ButtonStyle { case primary, secondary, danger, disabled, gold }
+    /// The button kinds. Every one is flat (one fill, at most a 1-px keyline of its own) with
+    /// 1-px notched corners; pressed, the fill steps up and the content drops one pixel.
+    /// - primary: blue, the main action of a sheet or card (BUY, an affordable TREE).
+    /// - secondary: dark with a keyline, everything else.
+    /// - gold: the one hero action on a screen (PLAY, RESUME).
+    /// - danger: red, a destructive action being confirmed.
+    /// - disabled: a dim keyline only, not pressable-looking.
+    /// - bare: no box until pressed (a close X).
+    enum ButtonStyle { case primary, secondary, danger, disabled, gold, bare }
 
-    /// A flat button: one fill, a centred label (and optional icon), and a lighter fill while
-    /// pressed. Records its hit region.
+    /// Fill, keyline and ink for a button style.
+    func buttonColours(_ style: ButtonStyle, pressed: Bool) -> (fill: Pixel?, edge: Pixel?, ink: Pixel) {
+        switch style {
+        case .primary: return (pressed ? Palette.accentLight : Palette.accent, nil, Palette.white)
+        case .secondary: return (pressed ? Palette.panel3 : Palette.panel2, pressed ? Palette.muted : Palette.border, pressed ? Palette.white : Palette.text)
+        case .danger: return (pressed ? Palette.dangerLight : Palette.danger, nil, Palette.black)
+        case .disabled: return (Palette.panel1, Palette.panel3, Palette.muted)
+        case .gold: return (pressed ? Palette.goldLight : Palette.gold, nil, Palette.goldInk)
+        case .bare: return (pressed ? Palette.panel3 : nil, nil, pressed ? Palette.white : Palette.text2)
+        }
+    }
+
+    /// A flat box with stepped (notched) corners: `notch` 1 drops each corner pixel, 2 drops a
+    /// 2-1 step. An optional keyline runs 1 px inside the edge and follows the notch.
+    func box(_ r: Rect, _ fill: Pixel, edge: Pixel? = nil, notch: Int = 1) {
+        let c = canvas
+        func notched(_ r: Rect, _ col: Pixel, _ n: Int) {
+            guard r.w > 0, r.h > 0 else { return }
+            for y in 0..<r.h {
+                let d = min(y, r.h - 1 - y)
+                let cut = d < n ? n - d : 0
+                c.fill(r.x + cut, r.y + y, r.w - 2 * cut, 1, col)
+            }
+        }
+        if let e = edge {
+            notched(r, e, notch)
+            notched(r.inset(1), fill, notch - 1)
+        } else {
+            notched(r, fill, notch)
+        }
+    }
+
+    /// A flat button: a notched box, then its icon and label centred as one group (icon, 5 px,
+    /// label), each on the cap line. Records its hit region.
     func button(_ g: Game, _ r: Rect, _ label: String, _ a: Action, style: ButtonStyle = .secondary,
                 icon: Sprite? = nil, tintIcon: Bool = false, scale: Int = 1, info: [String] = []) {
         let c = canvas
-        let pressed = g.isPressed(a)
-        let fill: Pixel, ink: Pixel
-        switch style {
-        case .primary: fill = pressed ? Palette.ladder[4] : Palette.accent; ink = Palette.white
-        case .secondary: fill = pressed ? Palette.panel3 : Palette.panel2; ink = Palette.text
-        case .danger: fill = pressed ? Palette.white : Palette.danger; ink = Palette.black
-        case .disabled: fill = Palette.panel1; ink = Palette.muted
-        case .gold: fill = pressed ? Palette.goldLight : Palette.gold; ink = Palette.black
-        }
-        c.fill(r, fill)
+        let pressed = style != .disabled && g.isPressed(a)
+        let (fill, edge, ink) = buttonColours(style, pressed: pressed)
+        if let f = fill { box(r, f, edge: edge) }
         let tw = PixelFont.measure(label, scale: scale)
-        let iw = icon.map { $0.width * scale + (label.isEmpty ? 0 : 4 * scale) } ?? 0
-        let x = r.x + (r.w - tw - iw) / 2
-        let y = r.y + (r.h - PixelFont.capHeight * scale) / 2
+        let iw = icon.map { $0.width * scale + (label.isEmpty ? 0 : 5 * scale) } ?? 0
+        let x = r.x + (r.w - tw - iw + 1) / 2
+        let dy = pressed ? 1 : 0
         if let s = icon {
-            c.sprite(s, x, r.y + (r.h - s.height * scale) / 2, tint: style == .disabled ? Palette.muted : (tintIcon ? ink : nil), scale: scale)
+            let tint: Pixel? = style == .disabled ? Palette.muted : (tintIcon ? ink : nil)
+            c.sprite(s, x, r.y + (r.h - s.height * scale + 1) / 2 + dy, tint: tint, scale: scale)
         }
-        c.text(label, x + iw, y, ink, scale: scale)
+        c.text(label, x + iw, r.y + (r.h - PixelFont.capHeight * scale + 1) / 2 + dy, ink, scale: scale)
         hit(r, a, info)
     }
 

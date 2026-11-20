@@ -15,20 +15,20 @@ public struct LevelSpec: Sendable {
     public let radius: Int
 
     public static let campaign: [LevelSpec] = [
-        .init(name: "FIRST LIGHT", shape: .blob, radius: 20),
-        .init(name: "TWIN RIDGE", shape: .canyon, radius: 22),
-        .init(name: "THE RING", shape: .ring, radius: 24),
-        .init(name: "PILLARS", shape: .pillars, radius: 26),
-        .init(name: "SPIRAL", shape: .spiral, radius: 28),
-        .init(name: "LABYRINTH", shape: .labyrinth, radius: 30),
-        .init(name: "THE CORE", shape: .core, radius: 31),
+        .init(name: "FIRST LIGHT", shape: .blob, radius: 44),
+        .init(name: "TWIN RIDGE", shape: .canyon, radius: 45),
+        .init(name: "THE RING", shape: .ring, radius: 46),
+        .init(name: "PILLARS", shape: .pillars, radius: 47),
+        .init(name: "SPIRAL", shape: .spiral, radius: 48),
+        .init(name: "LABYRINTH", shape: .labyrinth, radius: 49),
+        .init(name: "THE CORE", shape: .core, radius: 50),
     ]
 
     public static func forLevel(_ level: Int) -> LevelSpec {
         if level >= 1 && level <= campaign.count { return campaign[level - 1] }
         let n = level - campaign.count
         let shapes = Shape.allCases
-        return LevelSpec(name: "DEEP \(n)", shape: shapes[(n * 3) % shapes.count], radius: 32)
+        return LevelSpec(name: "DEEP \(n)", shape: shapes[(n * 3) % shapes.count], radius: 51)
     }
 
     /// The board is the arena plus a wall rim.
@@ -79,10 +79,13 @@ public enum LevelGen {
             }
         case .canyon:
             let phase = rng.range(0, 6.28)
+            // Two ridges, each broken by a two-cell pass every 14 cells (staggered), so the
+            // land beyond them can be dug too.
             for x in (c - R)...(c + R) {
                 let off = 3.0 * sin(Double(x) * 0.23 + phase)
-                wall(x, c - 5 + Int(off.rounded()))
-                wall(x, c + 5 + Int(off.rounded()))
+                let along = x - (c - R)
+                if along % 14 >= 2 { wall(x, c - 5 + Int(off.rounded())) }
+                if (along + 7) % 14 >= 2 { wall(x, c + 5 + Int(off.rounded())) }
             }
             spawn = Point(c - R + 3, c + Int((3.0 * sin(Double(c - R + 3) * 0.23 + phase)).rounded()))
             gold = Point(c + R - 3, c + Int((3.0 * sin(Double(c + R - 3) * 0.23 + phase)).rounded()))
@@ -103,8 +106,8 @@ public enum LevelGen {
         case .spiral:
             // Archimedean spiral wall: balls have to work their way inward.
             var a = 0.0
-            while a < 6.28 * 3.2 {
-                let r = 2.5 + a * Double(R - 3) / (6.28 * 3.2)
+            while a < 6.28 * 2.2 {
+                let r = 2.5 + a * Double(R - 3) / (6.28 * 2.2)
                 wall(c + Int((cos(a) * r).rounded()), c + Int((sin(a) * r).rounded()))
                 a += 0.5 / max(1, r)
             }
@@ -122,11 +125,22 @@ public enum LevelGen {
         }
 
         // 3. Clear a pocket for the balls to start in.
-        for dy in -2...2 { for dx in -2...2 where dx * dx + dy * dy <= 5 {
+        let pr = Tuning.spawnPocketRadius
+        for dy in -pr...pr { for dx in -pr...pr where dx * dx + dy * dy <= pr * pr + 2 {
             let x = spawn.x + dx, y = spawn.y + dy
             if b.inside(x, y), mask[b.index(x, y)] { b.kind[b.index(x, y)] = .empty }
         } }
         b.spawn = spawn
+        // A fixed gold spot is never boxed in by walls.
+        if let g = gold {
+            for (dx, dy) in [(0, 0), (1, 0), (-1, 0), (0, 1), (0, -1)] where b.inside(g.x + dx, g.y + dy) {
+                let i = b.index(g.x + dx, g.y + dy)
+                if mask[i], b.kind[i] == .wall { b.kind[i] = .block }
+            }
+        }
+        // Pockets the balls could never reach turn to rock, so every block, shard and the gold
+        // can be dug to from the spawn.
+        sealUnreachable(b, from: spawn)
 
         // 4. The gold: far from the spawn, never on a wall.
         let maxSpawnDist = maxDistance(mask, size, from: spawn)
@@ -201,8 +215,12 @@ public enum LevelGen {
         func ok(_ p: Point) -> Bool {
             cheb(p, b.gold) > 3 && spots.allSatisfy { cheb($0, p) >= Tuning.shardSpacing }
         }
-        // Two near starters: 6 to 8 cells from the spawn.
-        let near = candidates.filter { (6...8).contains(cheb($0, b.spawn)) }
+        // Two near starters, a few cells from the spawn with nothing but blocks in between.
+        let steps = stepsFrom(b, b.spawn, limit: 12)
+        let near = candidates.filter {
+            let d = cheb($0, b.spawn)
+            return Tuning.starterShardRange.contains(d) && steps[b.index($0.x, $0.y)] <= d + 2
+        }
         for _ in 0..<200 where spots.count < 2 && !near.isEmpty {
             let p = near[rng.int(near.count)]
             if ok(p) { spots.append(p) }
@@ -215,13 +233,50 @@ public enum LevelGen {
             let p = far[rng.int(far.count)]
             if ok(p) { spots.append(p) }
         }
-        let values = Economy.shardValues(count: spots.count)
+        // Deeper shards pay more (`Tuning.shardDepthBias`).
+        let values = Economy.shardValues(weights: spots.map { pow(Double(cheb($0, b.spawn)), Tuning.shardDepthBias) })
         for (p, v) in zip(spots, values) {
             let i = b.index(p.x, p.y)
             b.kind[i] = .shard
             b.shardValue[i] = v
             b.rich[i] = false
         }
+    }
+
+    /// Steps (up, down, left or right, never through a wall) from `p` to every cell, counted
+    /// up to `limit`; cells further away read `Int.max`.
+    static func stepsFrom(_ b: Board, _ p: Point, limit: Int) -> [Int] {
+        var steps = Array(repeating: Int.max, count: b.kind.count)
+        var frontier = [b.index(p.x, p.y)]
+        steps[frontier[0]] = 0
+        for d in 1...limit {
+            var next: [Int] = []
+            for i in frontier {
+                let x = i % b.size, y = i / b.size
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] where b.inside(x + dx, y + dy) {
+                    let j = b.index(x + dx, y + dy)
+                    if steps[j] == Int.max, b.kind[j] != .wall { steps[j] = d; next.append(j) }
+                }
+            }
+            frontier = next
+        }
+        return steps
+    }
+
+    /// Turns every open or breakable cell that can't be reached from `p` (stepping up, down,
+    /// left or right, never through a wall) into wall.
+    static func sealUnreachable(_ b: Board, from p: Point) {
+        var seen = Array(repeating: false, count: b.kind.count)
+        var stack = [b.index(p.x, p.y)]
+        seen[stack[0]] = true
+        while let i = stack.popLast() {
+            let x = i % b.size, y = i / b.size
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] where b.inside(x + dx, y + dy) {
+                let j = b.index(x + dx, y + dy)
+                if !seen[j], b.kind[j] != .wall { seen[j] = true; stack.append(j) }
+            }
+        }
+        for i in b.kind.indices where !seen[i] { b.kind[i] = .wall }
     }
 
     static func ringWall(_ b: Board, _ mask: [Bool], _ c: Int, radius: Double, doors: Int, rng: inout RNG) {
@@ -237,17 +292,27 @@ public enum LevelGen {
         }
     }
 
-    /// A coarse maze: cells of 7 blocks with one-block walls, carved by a depth-first walk.
+    /// A coarse maze: cells of 9 blocks with one-block walls, carved by a depth-first walk.
+    /// Only maze cells wholly inside the arena disc take part; the clipped ones round the rim
+    /// stay open, so the walk can never wall the gold off from the spawn.
     static func maze(_ b: Board, _ mask: [Bool], c: Int, R: Int, rng: inout RNG) {
-        let cell = 7
+        let cell = 9
         let n = (2 * R) / cell
         let origin = c - (n * cell) / 2
-        var visited = Array(repeating: false, count: n * n)
+        let inDisc: [Bool] = (0..<(n * n)).map { i in
+            let x0 = origin + (i % n) * cell, y0 = origin + (i / n) * cell
+            return [(x0, y0), (x0 + cell, y0), (x0, y0 + cell), (x0 + cell, y0 + cell)].allSatisfy { p in
+                (p.0 - c) * (p.0 - c) + (p.1 - c) * (p.1 - c) <= R * R
+            }
+        }
+        // Cells outside the disc count as visited, so the walk stays inside.
+        var visited = inDisc.map { !$0 }
         // Open wall segments between cells: right[i] and down[i].
         var openRight = Array(repeating: false, count: n * n)
         var openDown = Array(repeating: false, count: n * n)
-        var stack = [0]
-        visited[0] = true
+        guard let first = inDisc.firstIndex(of: true) else { return }
+        var stack = [first]
+        visited[first] = true
         while let cur = stack.last {
             let cx = cur % n, cy = cur / n
             var options: [(Int, Int)] = []
@@ -270,12 +335,12 @@ public enum LevelGen {
             for gx in 0..<n {
                 let i = gy * n + gx
                 let x0 = origin + gx * cell, y0 = origin + gy * cell
-                if gx + 1 < n {
+                if gx + 1 < n, inDisc[i] && inDisc[i + 1] {
                     for y in y0...(y0 + cell) where !(openRight[i] && y > y0 + 1 && y < y0 + cell - 1) {
                         setWall(b, mask, x0 + cell, y)
                     }
                 }
-                if gy + 1 < n {
+                if gy + 1 < n, inDisc[i] && inDisc[i + n] {
                     for x in x0...(x0 + cell) where !(openDown[i] && x > x0 + 1 && x < x0 + cell - 1) {
                         setWall(b, mask, x, y0 + cell)
                     }

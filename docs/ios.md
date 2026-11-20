@@ -18,7 +18,7 @@ the `duo-screenshots` artifact.
 
 - One art pixel = **6 x 6 device pixels**. 2853 / 6 = 475, 2007 / 6 = 334, so the canvas is
   **475 x 334** art pixels (2850 x 2004 px, centred with 1.5 px to spare per side).
-- A cell is **10 x 10** art pixels. The board view is the left 325 x 334; levels are 45 to 67
+- A cell is **10 x 10** art pixels. The board view is the left 325 x 334; levels are 93 to 107
   cells across, so you pan around them. The panel takes the right 150 x 334.
 - The inner screen's corners are heavily rounded: UI stays `Tuning.cornerRadius` (28 art px)
   clear of them.
@@ -37,7 +37,7 @@ letterbox.
 ```sh
 brew install xcodegen just
 just ios-sim                 # iPhone Duo simulator ("GP Duo")
-SCENE=mid just ios-sim       # a staged scene (see Scenes.names: menu, start, mid, tree, sheet, aim, zoomout, ...)
+SCENE=mid just ios-sim       # a staged scene (see Scenes.names: menu, start, mid, tree, sheet, launch, zoomout, ...)
 just ios-device              # a plugged-in phone (Xcode signed in to team X9E4HG27NK)
 ```
 

@@ -14,6 +14,8 @@ let package = Package(
         .target(name: "GoldenPixelCore", path: "Core/Sources/GoldenPixelCore"),
         // Renders scenes to PNG without a device (`just render`): previews, icons and docs art.
         .executableTarget(name: "gp-render", dependencies: ["GoldenPixelCore"], path: "Core/Sources/gp-render"),
+        // Headless pacing simulator: a bot plays each level and reports how long it takes.
+        .executableTarget(name: "gp-sim", dependencies: ["GoldenPixelCore"], path: "Core/Sources/gp-sim"),
         .testTarget(name: "GoldenPixelCoreTests", dependencies: ["GoldenPixelCore"], path: "Core/Tests/GoldenPixelCoreTests"),
     ],
     swiftLanguageModes: [.v5]

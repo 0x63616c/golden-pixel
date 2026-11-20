@@ -74,6 +74,7 @@ final class FogTests: XCTestCase {
     func testHiddenBlocksStillCollideAndBreak() {
         let g = Game(seed: 9)
         g.ui.started = true
+        g.buyBall(.basic)
         let b = g.board
         let hiddenBefore = b.kind.indices.filter { b.kind[$0] == .block && !b.revealed[$0] }.count
         for _ in 0..<(60 * 40) { g.update(1.0 / 60) }

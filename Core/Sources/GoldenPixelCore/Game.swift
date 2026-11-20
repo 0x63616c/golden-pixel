@@ -70,8 +70,6 @@ public final class Game {
     public var banners: [Banner] = []
     public var events: [GameEvent] = []
     public var time: Double = 0
-    public var combo = 0
-    public var comboTimer = 0.0
     public var shake = 0.0
     /// Counting down after the gold breaks, then the next level starts.
     public var clearTimer: Double?
@@ -112,7 +110,7 @@ public final class Game {
         respawnBalls()
         let away = Economy.offlineEarnings(incomePerSecond: progress.incomeRate, elapsed: now - s.savedAt, mods: mods)
         if away > 0 {
-            earn(away, combo: false)
+            earn(away)
             banners.append(Banner(text: "AWAY +\(compact(away))", color: Palette.gold, life: 3, big: false))
         }
         return away
@@ -160,7 +158,7 @@ public final class Game {
 
     // MARK: - Actions
 
-    /// Buys a ball and launches it from the launch point along `direction` (a unit vector),
+    /// Buys a ball and launches it from the launch point along `direction` (any length),
     /// or along the last aimed direction.
     @discardableResult
     public func buyBall(_ k: BallKind, direction: (x: Double, y: Double)? = nil) -> Bool {
@@ -169,8 +167,28 @@ public final class Game {
         guard progress.money >= cost else { events.append(.denied); return false }
         progress.money -= cost
         progress.update(k) { $0.owned += 1 }
-        if let d = direction { lastAim = d }
+        if let d = direction, d.x * d.x + d.y * d.y > 1e-9 { lastAim = d }
         launch(k, direction: lastAim)
+        events.append(.purchase)
+        return true
+    }
+
+    /// Buys a ball and places it at board position `at` (in cells, which must be an open cell)
+    /// flying along `direction`, or along the last direction.
+    @discardableResult
+    public func buyBall(_ k: BallKind, at p: (x: Double, y: Double), direction: (x: Double, y: Double)?) -> Bool {
+        let cx = Int(p.x.rounded(.down)), cy = Int(p.y.rounded(.down))
+        guard board.inside(cx, cy), board.kind[board.index(cx, cy)] == .empty else { events.append(.denied); return false }
+        guard mods.unlocked.contains(k), balls.count < Tuning.maxBalls else { events.append(.denied); return false }
+        let cost = ballCost(k)
+        guard progress.money >= cost else { events.append(.denied); return false }
+        progress.money -= cost
+        progress.update(k) { $0.owned += 1 }
+        if let d = direction, d.x * d.x + d.y * d.y > 1e-9 { lastAim = d }
+        // Keep the whole ball inside its cell so it never starts overlapping a block.
+        let r = Tuning.ballRadius
+        let x = min(Double(cx) + 1 - r, max(Double(cx) + r, p.x)), y = min(Double(cy) + 1 - r, max(Double(cy) + r, p.y))
+        launch(k, from: (x, y), direction: lastAim)
         events.append(.purchase)
         return true
     }
@@ -184,10 +202,9 @@ public final class Game {
         progress.skillRanks[id, default: 0] += 1
         refreshMods()
         switch s.effect {
-        case .unlock(let k) where progress.ball(k).owned == 0:
-            // An unlocked type arrives with one ball so it shows up straight away.
-            progress.update(k) { $0.owned = 1 }
-            launch(k, direction: lastAim)
+        case .unlock(let k):
+            // A new type is ready to place: it becomes the selected ball.
+            ui.selected = k
         case .cash(let v):
             progress.money += v * Economy.levelValueScale(board.level)
         case .ballStat(.heavy, _), .ballSpec(.heavy, _):
@@ -215,23 +232,24 @@ public final class Game {
 
     // MARK: - Level flow
 
-    /// Starts a level as a fresh run: one basic ball, no coins, an empty tree, no shards.
-    /// Stars, settings and lifetime totals carry over.
+    /// Starts a level as a fresh run: no balls, just enough coins for the first basic ball,
+    /// an empty tree, no shards. Stars, settings and lifetime totals carry over.
     func startLevel(_ level: Int) {
         if progress.level != level { progress.lastClearTime = progress.levelTime }
         progress.level = level
         progress.maxLevel = max(progress.maxLevel, level)
-        progress.money = 0
+        progress.money = Tuning.startCoins
         progress.runEarnings = 0
         progress.shards = 0
         progress.levelTime = 0
         progress.skillRanks = SkillNode.startingRanks
-        progress.balls = [BallKind.basic.rawValue: BallProgress(owned: 1)]
+        progress.balls = [:]
         refreshMods()
         board = LevelGen.make(level: level, at: time)
         goldSeen = false
         clearTimer = nil
         lastAim = (0, -1)
+        ui.selected = .basic
         centreCamera()
         respawnBalls()
         events.append(.levelStart(level))
@@ -239,6 +257,13 @@ public final class Game {
     }
 
     func advanceLevel() { startLevel(progress.level + 1) }
+
+    /// Starts the current level again from scratch (a fresh run, same layout).
+    public func restartLevel() {
+        startLevel(progress.level)
+        banners.removeAll()
+        banners.append(Banner(text: "RESTARTED", color: Palette.text, life: 1.6, big: false))
+    }
 
     /// Wipes everything, settings aside, and starts again from level 1.
     public func resetProgress() {
@@ -249,10 +274,12 @@ public final class Game {
         banners.removeAll()
     }
 
-    /// Points the camera at the spawn at zoom 1, where every level starts.
+    /// Points the camera at the spawn at zoom 1, where every level starts. The board camera
+    /// may look past the board's edge, so the spawn sits in the middle of the view even
+    /// when it is near the edge of the level.
     func centreCamera() {
         let L = ui.layout
-        ui.camera = Camera(boardW: board.pixelSize, boardH: board.pixelSize, viewW: L.board.w, viewH: L.board.h)
+        ui.camera = Camera(boardW: board.pixelSize, boardH: board.pixelSize, viewW: L.board.w, viewH: L.board.h, overscroll: 1)
         let cp = Double(Tuning.cellPixels)
         ui.camera.look(at: (Double(board.spawn.x) + 0.5) * cp, (Double(board.spawn.y) + 0.5) * cp)
     }
@@ -289,45 +316,13 @@ public final class Game {
         return (Double(i % board.size) + 0.5, Double(i / board.size) + 0.5)
     }
 
-    func launch(_ k: BallKind, direction d: (x: Double, y: Double)) {
-        let p = launchPoint()
+    func launch(_ k: BallKind, from start: (x: Double, y: Double)? = nil, direction d: (x: Double, y: Double)) {
+        let p = start ?? launchPoint()
         let len = max(1e-6, (d.x * d.x + d.y * d.y).squareRoot())
         var b = Ball(kind: k, x: p.x, y: p.y, vx: d.x / len, vy: d.y / len)
         b.pierce = basePierce(k)
         b.phaseTimer = rng.range(0.5, 3)
         balls.append(b)
-    }
-
-    /// Where a ball launched from the launch point along `d` would go: its first stretch of
-    /// path with up to `bounces` bounces, in board art pixels. Stops at the fog.
-    public func predictPath(_ d: (x: Double, y: Double), bounces: Int = 2, maxCells: Double = 30) -> [Point] {
-        let p = launchPoint()
-        let len = max(1e-6, (d.x * d.x + d.y * d.y).squareRoot())
-        var x = p.x, y = p.y, vx = d.x / len, vy = d.y / len
-        var out: [Point] = []
-        var travelled = 0.0, left = bounces
-        let r = Tuning.ballRadius, cp = Double(Tuning.cellPixels)
-        while travelled < maxCells {
-            let step = 0.05
-            let nx = x + vx * step, ny = y + vy * step
-            travelled += step
-            let cx = Int(nx.rounded(.down)), cy = Int(ny.rounded(.down))
-            guard board.inside(cx, cy), board.revealed[board.index(cx, cy)] else { break }
-            // Bounce off the solid side the ball's edge would enter.
-            let hitX = board.kindAt(Int((nx + (vx > 0 ? r : -r)).rounded(.down)), Int(y.rounded(.down))) != .empty
-            let hitY = board.kindAt(Int(x.rounded(.down)), Int((ny + (vy > 0 ? r : -r)).rounded(.down))) != .empty
-            if hitX || hitY {
-                if left == 0 { break }
-                left -= 1
-                if hitX { vx = -vx }
-                if hitY { vy = -vy }
-                continue
-            }
-            x = nx; y = ny
-            let pt = Point(Int((x * cp).rounded(.down)), Int((y * cp).rounded(.down)))
-            if out.last != pt { out.append(pt) }
-        }
-        return out
     }
 
     func basePierce(_ k: BallKind) -> Int {
@@ -355,11 +350,9 @@ public final class Game {
         let wasShard = board.kind[i] == .shard
         let tier = Int(board.tier[i])
         let shown = board.revealed[i]
-        comboTimer > 0 ? (combo += 1) : (combo = 1)
-        comboTimer = mods.comboWindow
         var value = Economy.tierValue(tier, level: board.level) * (board.rich[i] ? Tuning.richMultiplier : 1)
         if wasGold { value *= Tuning.goldValueMultiplier }
-        earn(value * mods.money, combo: true)
+        earn(value * mods.money)
         board.kind[i] = .empty
         board.hp[i] = 0
         if wasShard {
@@ -367,12 +360,12 @@ public final class Game {
             board.shardValue[i] = 0
             progress.shards += v
             events.append(.shardBroken)
-            banners.append(Banner(text: "+\(v) SHARDS", color: Palette.mint, life: 1.6, big: false))
+            banners.append(Banner(text: v == 1 ? "+1 SHARD" : "+\(v) SHARDS", color: Palette.mint, life: 1.6, big: false))
             rings.append(Ring(x: Double(x) + 0.5, y: Double(y) + 0.5, maxRadius: 3, life: 0.5, maxLife: 0.5, color: Palette.mint, overFog: true))
         }
-        // A block breaks from its faint last step, so its dust is the faint blue.
-        let color = wasGold ? Palette.gold : (wasShard ? Palette.mint : (shown ? Palette.ladder[1] : Palette.muted))
-        let fade = wasGold ? Palette.goldDim : (wasShard ? Palette.mintDim : (shown ? Palette.ladder[0] : Palette.border))
+        // A block breaks from its last, palest step, so its dust is that pale blue.
+        let color = wasGold ? Palette.gold : (wasShard ? Palette.mint : (shown ? Palette.ladder[0] : Palette.muted))
+        let fade = wasGold ? Palette.goldDim : (wasShard ? Palette.mintDim : (shown ? Palette.ladder[2] : Palette.border))
         for _ in 0..<(wasGold ? 40 : (wasShard ? 16 : 5)) {
             let a = rng.range(0, 6.283185), s = rng.range(2, wasGold ? 14 : 7)
             let life = rng.range(0.25, wasGold ? 1.4 : 0.55)
@@ -410,12 +403,11 @@ public final class Game {
         clearTimer = Tuning.levelClearPause
     }
 
-    func earn(_ v: Double, combo useCombo: Bool) {
-        let m = useCombo ? Economy.comboMultiplier(combo) : 1
-        progress.money += v * m
-        progress.runEarnings += v * m
-        progress.totalEarnings += v * m
-        incomeWindow += v * m
+    func earn(_ v: Double) {
+        progress.money += v
+        progress.runEarnings += v
+        progress.totalEarnings += v
+        incomeWindow += v
     }
 
     func revealWall(_ i: Int) {
@@ -424,8 +416,6 @@ public final class Game {
         board.revealedAt[i] = time
         events.append(.wallFound)
     }
-
-    public var comboMultiplier: Double { comboTimer > 0 ? Economy.comboMultiplier(combo) : 1 }
 }
 
 #if canImport(Darwin)

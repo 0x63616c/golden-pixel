@@ -121,6 +121,31 @@ final class LevelTests: XCTestCase {
         }
     }
 
+    /// Walls never seal anything off: every block, shard and the gold can be dug to from the
+    /// spawn, and deeper shards pay more than the starters.
+    func testEverythingIsReachableAndDeepShardsPayMore() {
+        for level in 1...14 {
+            let b = LevelGen.make(level: level)
+            var seen = Array(repeating: false, count: b.kind.count)
+            var stack = [b.index(b.spawn.x, b.spawn.y)]
+            seen[stack[0]] = true
+            while let i = stack.popLast() {
+                let x = i % b.size, y = i / b.size
+                for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] where b.inside(x + dx, y + dy) {
+                    let j = b.index(x + dx, y + dy)
+                    if !seen[j], b.kind[j] != .wall { seen[j] = true; stack.append(j) }
+                }
+            }
+            for i in b.kind.indices where b.kind[i].breakable { XCTAssertTrue(seen[i], "level \(level): cell \(i) is walled off") }
+            let shards = b.kind.indices.filter { b.kind[$0] == .shard }
+            func depth(_ i: Int) -> Int { max(abs(i % b.size - b.spawn.x), abs(i / b.size - b.spawn.y)) }
+            let nearest = shards.min { depth($0) < depth($1) }!, deepest = shards.max { depth($0) < depth($1) }!
+            XCTAssertLessThan(b.shardValue[nearest], b.shardValue[deepest], "level \(level)")
+        }
+        XCTAssertEqual(Economy.shardValues(weights: [1, 8, 27, 64], total: 100).reduce(0, +), 100)
+        XCTAssertEqual(Economy.shardValues(weights: [1, 1000], total: 10).min(), 1, "every shard pays at least one")
+    }
+
     func testFirstLevelIsGentle() {
         let b = LevelGen.make(level: 1)
         let tiers = b.kind.indices.filter { b.kind[$0] == .block }.map { Int(b.tier[$0]) }

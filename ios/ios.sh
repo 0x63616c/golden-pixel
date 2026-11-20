@@ -74,7 +74,8 @@ sim() {
   say "Building for simulator $SIM_NAME ($udid)"
   build_sim "$udid"
   boot_sim "$udid"
-  open -a "Simulator" 2>/dev/null || true
+  # Bring Simulator up on this device (not whichever one it showed last).
+  open -a "Simulator" --args -CurrentDeviceUDID "$udid" 2>/dev/null || true
   # A booted Duo starts folded with the inner screen black; unfold it flat.
   [[ "$SIM_TYPE" == *Duo* ]] && unfold "$udid"
   xcrun simctl install "$udid" build/sim/Build/Products/Debug-iphonesimulator/GoldenPixel.app

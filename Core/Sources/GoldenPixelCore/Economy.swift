@@ -17,18 +17,25 @@ public struct BallProgress: Codable, Equatable, Sendable {
 public enum Economy {
     public static func ballCost(_ k: BallKind, owned: Int, swarm: Bool = false) -> Double {
         let t = k.type
-        // The free starting basic ball does not count towards its price.
-        let n = k == .basic ? max(0, owned - 1) : owned
+        let n = owned
         let discount = (k == .basic && swarm) ? 0.6 : 1
         return (t.baseCost * pow(t.costGrowth, Double(n)) * discount).rounded()
     }
 
-    public static func levelHPScale(_ level: Int) -> Double { pow(1.85, Double(level - 1)) }
-    public static func levelValueScale(_ level: Int) -> Double { pow(1.75, Double(level - 1)) }
-    public static func tierHP(_ tier: Int, level: Int) -> Double { Tuning.tierHP[tier] * levelHPScale(level) }
+    /// Durability is the same on every level: one shade of the ladder is one hit point, and an
+    /// unupgraded basic ball deals exactly one per hit, so you can count a block's hits by its
+    /// colour. Later levels get tougher through their tier mix, not bigger numbers.
+    public static func levelHPScale(_ level: Int) -> Double { 1 }
+    /// Coins per break on a level (`Tuning.levelPayout`): the dial that sets how long a level
+    /// takes, since blocks are equally tough everywhere and ball prices don't change.
+    public static func levelValueScale(_ level: Int) -> Double {
+        let t = Tuning.levelPayout
+        return t[min(t.count, max(1, level)) - 1]
+    }
+    public static func tierHP(_ tier: Int, level: Int) -> Double { Tuning.tierHP[tier] }
 
-    /// One step of the durability ladder on a level: the HP of one shade.
-    public static func hitUnit(level: Int) -> Double { levelHPScale(level) }
+    /// One step of the durability ladder: the HP of one shade (always 1).
+    public static func hitUnit(level: Int) -> Double { 1 }
 
     /// Which shade a block shows: 0 = faintest (one step left) ... 5 = brightest (toughest).
     public static func ladderStep(hp: Double, level: Int) -> Int {
@@ -44,8 +51,20 @@ public enum Economy {
         return (0..<count).map { total / count + ($0 < total % count ? 1 : 0) }
     }
 
-    public static func comboMultiplier(_ streak: Int) -> Double {
-        min(Tuning.comboMax, 1 + Double(max(0, streak - 1)) * Tuning.comboStep)
+    /// Splits the level's shards across its shard pixels in proportion to `weights`, with
+    /// every pixel paying at least one shard and the total exact.
+    public static func shardValues(weights: [Double], total: Int = SkillNode.totalCost) -> [Int] {
+        guard !weights.isEmpty else { return [] }
+        let spare = max(0, total - weights.count)
+        let sum = max(1e-9, weights.reduce(0, +))
+        let raw = weights.map { Double(spare) * $0 / sum }
+        var v = raw.map { Int($0) }
+        var left = spare - v.reduce(0, +)
+        for i in raw.indices.sorted(by: { raw[$0] - Double(v[$0]) > raw[$1] - Double(v[$1]) }) where left > 0 {
+            v[i] += 1
+            left -= 1
+        }
+        return v.map { $0 + 1 }
     }
 
     /// Offline earnings for `elapsed` seconds away, capped.
@@ -66,7 +85,6 @@ public struct Mods: Equatable, Sendable {
     public var lantern = 0
     public var sonar = 0
     public var offline = 0.1
-    public var comboWindow = 1.2
     public var unlocked: Set<BallKind> = [.basic]
 
     public var revealRadius: Int { Tuning.revealRadius + lantern }
@@ -89,7 +107,6 @@ public struct Mods: Equatable, Sendable {
             case .lantern: m.lantern = r
             case .sonar: m.sonar = r
             case .offline(let p): m.offline += p * rd
-            case .combo(let p): m.comboWindow += p * rd
             case .unlock(let k): m.unlocked.insert(k)
             case .cash, .ballStat, .ballSpec: break
             }

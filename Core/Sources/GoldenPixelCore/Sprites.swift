@@ -63,6 +63,7 @@ public enum Sprites {
     public static let menu = Sprite([".......", "#######", ".......", "#######", ".......", "#######", "......."], ["#": Palette.text])
     public static let close = Sprite(["#.....#", ".#...#.", "..#.#..", "...#...", "..#.#..", ".#...#.", "#.....#"], ["#": Palette.text])
     public static let play = Sprite(["#......", "###....", "#####..", "#######", "#####..", "###....", "#......"], ["#": Palette.text])
+    public static let restart = Sprite(["..###.#", ".#...##", "#...###", "#......", "#.....#", ".#...#.", "..###.."], ["#": Palette.text])
     public static let info = Sprite(["...#...", ".......", "..##...", "...#...", "...#...", "...#...", "..###.."], ["#": Palette.text])
     public static let gear = Sprite(["..#.#..", ".#####.", "##...##", ".#...#.", "##...##", ".#####.", "..#.#.."], ["#": Palette.text])
     public static let aim = Sprite(["...#...", "...#...", ".......", "##.#.##", ".......", "...#...", "...#..."], ["#": Palette.text])
@@ -75,6 +76,34 @@ public enum Sprites {
     public static let haptic = Sprite(["#.###.#", "#.#.#.#", "..#.#..", "..#.#..", "..#.#..", "#.#.#.#", "#.###.#"], ["#": Palette.text])
     public static let glowIcon = Sprite(["#..#..#", ".#...#.", "..###..", "#.###.#", "..###..", ".#...#.", "#..#..#"], ["#": Palette.text])
 
+    public static let pause = Sprite(Array(repeating: ".##.##.", count: 7), ["#": Palette.text])
+    public static let back = Sprite(["...#...", "..#....", ".#.....", "#######", ".#.....", "..#....", "...#..."], ["#": Palette.text])
+
+    /// The golden pixel at HUD size: one glowing gold square.
+    public static let goldPixel = Sprite([".......", ".ggggg.", ".ggggg.", ".ggggg.", ".ggggg.", ".ggggg.", "......."], ["g": Palette.gold.glowing(200)])
+    /// Look around: a four-way arrow.
+    public static let pan = Sprite(["...#...", "..###..", ".#.#.#.", "#######", ".#.#.#.", "..###..", "...#..."], ["#": Palette.text])
+
+    /// The logo's letters: heavy block capitals on a 2-unit stroke, 8 units tall, drawn at a
+    /// whole scale (one unit = `scale` art pixels). "g" marks the golden pixel, the dot on the
+    /// lower-case i, drawn in gold and glowing.
+    public static func logoGlyph(_ ch: Character) -> Sprite? { logoGlyphs[ch] }
+
+    private static let logoGlyphs: [Character: Sprite] = {
+        let rows: [Character: [String]] = [
+            "G": [".######", "#######", "##.....", "##..###", "##..###", "##...##", "#######", ".######"],
+            "O": [".#####.", "#######", "##...##", "##...##", "##...##", "##...##", "#######", ".#####."],
+            "L": ["##....", "##....", "##....", "##....", "##....", "##....", "######", "######"],
+            "D": ["######.", "#######", "##...##", "##...##", "##...##", "##...##", "#######", "######."],
+            "E": ["######", "######", "##....", "#####.", "#####.", "##....", "######", "######"],
+            "N": ["##...##", "###..##", "####.##", "####.##", "##.####", "##.####", "##..###", "##...##"],
+            "P": ["######.", "#######", "##...##", "##...##", "#######", "######.", "##.....", "##....."],
+            "i": ["gg", "gg", "..", "##", "##", "##", "##", "##"],
+            "X": ["##...##", "##...##", ".##.##.", "..###..", "..###..", ".##.##.", "##...##", "##...##"],
+        ]
+        return rows.mapValues { Sprite($0, ["#": Palette.white, "g": Palette.gold.glowing(255)]) }
+    }()
+
     /// 7x7 skill icons, one per effect kind.
     public static func skillIcon(_ e: SkillEffect) -> Sprite {
         switch e {
@@ -86,7 +115,6 @@ public enum Sprites {
         case .radar: return Sprite(["..###..", ".#...#.", "#..#..#", "#.###.#", "#..#..#", ".#...#.", "..###.."], ["#": Palette.text])
         case .offline: return Sprite(["####...", "..#....", ".#.....", "####...", "....###", ".....#.", "....###"], ["#": Palette.text])
         case .cash: return Sprite(["...#...", "..###..", ".#.#.#.", "...#...", "...#...", ".#####.", "......."], ["#": Palette.text])
-        case .combo: return Sprite(["#.....#", "##...##", "#.#.#.#", "#..#..#", "#.....#", "#.....#", "#.....#"], ["#": Palette.text])
         case .lantern: return Sprite(["..###..", ".#...#.", ".#####.", "#.###.#", "#.###.#", ".#####.", "..###.."], ["#": Palette.text])
         case .sonar: return Sprite(["#.....#", ".......", "..###..", "..#.#..", "..###..", ".......", "#.....#"], ["#": Palette.text])
         case .unlock(let k): return ballIcon(k)

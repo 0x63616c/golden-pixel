@@ -1,9 +1,25 @@
 import XCTest
 @testable import GoldenPixelCore
 
-/// Durability is brightness alone: a block is one blue hue that walks down from bright
-/// (tough) to faint (one hit left), one step per hit unit, and the hit after that breaks it.
+/// Durability is lightness alone: a block is one blue hue that walks up from deep (tough) to
+/// pale (one hit left), one step per hit unit, and the hit after that breaks it.
 final class DurabilityTests: XCTestCase {
+    /// One shade is one hit: an unupgraded basic ball takes a block down exactly one shade per
+    /// hit on every level, and the palest shade breaks on the next hit.
+    func testOneShadeIsOneBasicHit() {
+        XCTAssertEqual(BallKind.basic.type.damage, 1)
+        for level in [1, 3, 7, 12] {
+            XCTAssertEqual(Economy.hitUnit(level: level), 1)
+            let b = LevelGen.make(level: level)
+            let g = Game(progress: { var p = GoldenPixelCore.Progress(); p.level = level; return p }())
+            XCTAssertEqual(g.damage(.basic), 1, "no stars, no skills")
+            for i in b.kind.indices where b.kind[i] == .block {
+                let shades = Economy.ladderStep(hp: b.hp[i], level: level) + 1
+                XCTAssertEqual(b.hp[i], Double(shades), "level \(level): a block's HP is its shade count")
+            }
+        }
+    }
+
     func testFreshBlocksShowTheirTierColour() {
         for level in [1, 4, 9] {
             for tier in 0..<5 {
@@ -69,14 +85,14 @@ final class DurabilityTests: XCTestCase {
         XCTAssertEqual(cellColours(), [Palette.ladder[3] & 0x00ff_ffff], "then one flat colour: no cracks")
     }
 
-    /// Blocks are one hue (blue, brightening with toughness); walls are a neutral dark grey
-    /// that never outshines a block, so nothing pale sits out in the dark.
+    /// Blocks are one hue (blue, lighter as they wear down, so lighter = weaker); walls are a
+    /// neutral dark grey that never outshines a block, so nothing pale sits out in the dark.
     func testBlocksAreOneBlueRampAndWallsAreDarkGrey() {
         func luma(_ p: Pixel) -> Double { 0.2126 * Double(p.red) + 0.7152 * Double(p.green) + 0.0722 * Double(p.blue) }
-        for (a, b) in zip(Palette.ladder, Palette.ladder.dropFirst()) { XCTAssertLessThan(luma(a), luma(b)) }
+        for (a, b) in zip(Palette.ladder, Palette.ladder.dropFirst()) { XCTAssertGreaterThan(luma(a), luma(b), "pale = one hit left") }
         for p in Palette.ladder { XCTAssertGreaterThan(p.blue, p.red); XCTAssertGreaterThan(p.blue, p.green) }
         let w = Palette.wall
         XCTAssertEqual(Int(w.red), Int(w.green), accuracy: 4); XCTAssertEqual(Int(w.green), Int(w.blue), accuracy: 4)
-        XCTAssertLessThan(luma(w), luma(Palette.ladder[1]))
+        XCTAssertLessThan(luma(w), luma(Palette.ladder.last!))
     }
 }

@@ -149,4 +149,25 @@ final class RenderTests: XCTestCase {
             XCTAssertGreaterThan(g.board.pixelSize, g.ui.layout.board.w, "the level is bigger than the screen")
         }
     }
+
+    /// The menu logo is a hand-built wordmark: every letter has a glyph, the two lines lock up
+    /// to (nearly) one width, the golden pixel is the only glowing part of PiXEL, and it all
+    /// sits clear of the screen's corners.
+    func testMenuLogoLocksUp() {
+        let r = Renderer()
+        for line in Renderer.logoLines {
+            for ch in line.text { XCTAssertNotNil(Sprites.logoGlyph(ch), "no logo glyph for \(ch)") }
+        }
+        let widths = Renderer.logoLines.map { r.logoWidth($0) }
+        XCTAssertLessThanOrEqual((widths.max() ?? 0) - (widths.min() ?? 0), 2, "logo lines \(widths)")
+        let dot = Sprites.logoGlyph("i")!
+        XCTAssertEqual(dot.pixels.filter { $0?.glow == 255 }.count, 4, "the i is dotted with a 2x2 golden pixel")
+        let g = Scenes.make("menu")
+        r.render(g)
+        let L = g.ui.layout, size = r.logoSize
+        XCTAssertGreaterThanOrEqual((L.width - size.w) / 2 - Renderer.logoOutline, Tuning.cornerRadius)
+        // Only three buttons on the menu: play, how to play, settings.
+        let actions = g.ui.hits.map(\.action).filter { $0 != .none }
+        XCTAssertEqual(actions.count, 3, "\(actions)")
+    }
 }

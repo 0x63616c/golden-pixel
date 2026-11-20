@@ -1,21 +1,32 @@
 # Design
 
 **The board is the hero.** Everything else is a panel on the right: coins, shards, the TREE
-and MENU buttons, and one row per ball type.
+and pause buttons, and one row per unlocked ball type.
 
 ## How a level plays
 
-- **Only balls break pixels.** Taps on the board just say what's there; drags pan.
-- **Coins buy balls.** Tap a ball row for its info sheet (big BUY button); drag a row to aim
-  it like a slingshot (it launches opposite the drag, with a dotted path preview) and let go
-  to buy.
+- **Only balls break pixels.** Touches never damage the board; drags pan, a hold says what a
+  cell is.
+- **Coins buy balls.** A level starts with no balls and coins for exactly one basic ball. The
+  panel lists only unlocked types; tap one to select it (lit row, colour bar). Hold an open
+  spot on the board where you want the ball for a moment (a tick, and a ghost ball appears),
+  then drag out: a few dots show the way it will fly; let go to buy it. A plain tap on an open
+  spot uses the last direction. A quick one-finger drag always pans, so open levels stay easy
+  to move around; two fingers pan and zoom. Tap the selected row again (or hold any row) for its info sheet. Coins read in
+  full (1,800) below a million.
+- **Durability you can count.** One shade is one hit from an unupgraded basic ball, on every
+  level; level length comes from each level's coin payout (`Tuning.levelPayout`).
+- **Pause and restart.** The panel's pause button (two bars) opens: RESUME, RESTART LEVEL (asks first),
+  MAIN MENU. The main menu itself is just PLAY/CONTINUE, HOW TO PLAY and SETTINGS.
 - **Shards buy the skill tree.** Glowing mint shard pixels pay shards; a level's shards add up
-  to the whole tree. You sense a shard through the dark once your light gets within 6 cells.
+  to the whole tree, and deeper shards pay more. You sense a shard through the dark once your
+  light gets within 6 cells, but only the two closest show at once.
   The tree holds the general skills and every ball type's upgrades (unlock, damage, speed,
   special, two specialisations).
 - **Break the gold to clear the level.** Each gold is a star for good (+5% damage, +10%
   coins). Every level starts fresh: coins, shards, tree and balls reset.
-- Levels are 45 to 67 cells across, much bigger than the screen; the camera starts on the
+- Levels are 93 to 107 cells across, much bigger than the screen, and take 15 to 25
+  minutes (`swift run -c release gp-sim` checks it); the camera starts on the
   spawn and pinches between 0.5x, 1x, 2x, 3x and 4x.
 
 ## Rules of the look
@@ -25,9 +36,9 @@ and MENU buttons, and one row per ball type.
   gradients (ordered dither instead), no sub-pixel positions.
 - **Cells are 10 x 10.** Balls are 5 x 5 circles with a true centre pixel; trails are drawn
   through past centre pixels so the tail is centred.
-- **Durability is brightness alone.** Blocks are one blue hue: bright = tough, faint = one
-  hit left. A block steps down one shade per hit unit (bigger hits skip steps), flashing white
-  for one frame per hit; the hit after the faintest shade breaks it. No crack marks.
+- **Durability is lightness alone.** Blocks are one blue hue: deep = tough, pale = one hit
+  left. A block steps one shade paler per hit unit (bigger hits skip steps), flashing white
+  for one frame per hit; the hit after the palest shade breaks it. No crack marks.
 - **Flat.** One colour per surface: no highlights, shadows or bevels on cells, sprites,
   cards or buttons. Packed cells read as one surface with no lines between them. Walls are a
   neutral dark grey, never brighter than the blocks, so nothing pale floats in the dark.

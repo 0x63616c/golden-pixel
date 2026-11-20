@@ -88,6 +88,24 @@ public enum Fog {
         return false
     }
 
+    /// The shards actually shown in the dark: of the sensed ones, only the `limit` closest to
+    /// the light (ties broken by position), so the dark never fills up with mint.
+    public static func shownShards(_ b: Board, limit: Int = Tuning.maxSensedShards, radius: Int = Tuning.shardSenseRadius) -> [Int] {
+        var found: [(d: Int, i: Int)] = []
+        for i in b.kind.indices where b.kind[i] == .shard && !b.revealed[i] {
+            let x = i % b.size, y = i / b.size
+            var best: Int?
+            for dy in -radius...radius {
+                for dx in -radius...radius where b.inside(x + dx, y + dy) && b.revealed[b.index(x + dx, y + dy)] {
+                    let d = max(abs(dx), abs(dy))
+                    if best == nil || d < best! { best = d }
+                }
+            }
+            if let d = best { found.append((d, i)) }
+        }
+        return found.sorted { ($0.d, $0.i) < ($1.d, $1.i) }.prefix(limit).map(\.i)
+    }
+
     /// The radar's hint square around the gold, or nil without the skill. Deterministic per
     /// level, and the gold is always inside it.
     public static func radarHint(_ b: Board, rank: Int) -> (center: Point, radius: Int)? {

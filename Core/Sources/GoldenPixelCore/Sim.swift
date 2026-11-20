@@ -8,7 +8,7 @@ extension Game {
         time += dt
         ui.camera.update(dt)
         ui.treeCamera.update(dt)
-        if ui.screen != .game { return }
+        if ui.screen != .game || ui.paused { return }
         if clearTimer == nil { progress.levelTime += dt }
 
         if let t = clearTimer {
@@ -16,8 +16,6 @@ extension Game {
             if left <= 0 { advanceLevel() } else { clearTimer = left }
         }
 
-        comboTimer = max(0, comboTimer - dt)
-        if comboTimer == 0 { combo = 0 }
         shake = max(0, shake - dt * 2.5)
 
         stepBalls(dt)
@@ -218,18 +216,22 @@ extension Game {
     }
 
     /// Sniper: after a bounce, turn toward the nearest pixel in range (or the gold, as Seeker).
+    /// After a bounce, turn toward the nearest breakable pixel ahead. Only pixels in front of
+    /// the bounced direction count, so a sniper never turns straight back into the pixel it
+    /// just hit (which would hit it every physics step).
     func aim(_ b: inout Ball, fromX x: Double, fromY y: Double) {
         let range = min(24, Int(special(.sniper)))
         let cx = Int(x.rounded(.down)), cy = Int(y.rounded(.down))
+        func ahead(_ dx: Int, _ dy: Int) -> Bool { Double(dx) * b.vx + Double(dy) * b.vy > 0 }
         var target: Point?
         if has("seeker"), board.kind[board.index(board.gold.x, board.gold.y)] == .gold {
             let dx = board.gold.x - cx, dy = board.gold.y - cy
-            if dx * dx + dy * dy <= range * range { target = board.gold }
+            if dx * dx + dy * dy <= range * range && ahead(dx, dy) { target = board.gold }
         }
         if target == nil {
             ringSearch: for r in 1...max(1, range) {
                 for dy in -r...r {
-                    for dx in -r...r where abs(dx) == r || abs(dy) == r {
+                    for dx in -r...r where (abs(dx) == r || abs(dy) == r) && ahead(dx, dy) {
                         let k = board.kindAt(cx + dx, cy + dy)
                         if k.breakable && board.inside(cx + dx, cy + dy) { target = Point(cx + dx, cy + dy); break ringSearch }
                     }

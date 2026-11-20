@@ -25,8 +25,11 @@ CADisplayLink (MTKView) ──► Game.update(dt) ──► Renderer.render ─�
   `gp-render` and runs `tools/gridcheck.py` on them and on the iPhone Duo simulator screenshots.
 - **Camera** (`Camera.swift`): zoom is canvas pixels per board pixel. Pinch is continuous;
   release eases to the nearest level (0.5, 1, 2, 3, 4; 0.5 is an exact every-other-pixel
-  subsample) and snaps the origin to a whole pixel. One-finger drags on the board always pan;
-  a drag that starts on a ball row aims a new ball. Double-tap toggles 1x and 2x. Taps never
-  damage anything. The skill tree uses the same camera with levels 0.5, 1 and 2.
+  subsample) and snaps the origin to a whole pixel. The board camera may overscroll (any board
+  point can reach the view's centre), so a level opens with the spawn in the middle. One-finger
+  drags on the board pan; a short hold (`PointerTracker.holdTime`) on an open cell places a
+  ball and a drag from there aims it; a long hold on a pixel says what it is. Touches never damage anything. The skill tree uses the
+  same camera with levels 0.5, 1 and 2 and half overscroll, and opens framed on the nodes showing
+  (`SkillTree.focus`).
 - **Saves**: versioned JSON in Application Support (`SaveCodec`), autosaved every 10 s and on
   backgrounding; an unreadable save is moved aside, never overwritten.

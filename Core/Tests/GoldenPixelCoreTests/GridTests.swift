@@ -52,8 +52,8 @@ final class GridTests: XCTestCase {
         XCTAssertGreaterThan(z, 1)
         let r = Renderer()
         g.shake = 0
-        // Board-only check: drop the fixed UI that floats over the board (combo, banners).
-        g.combo = 0; g.comboTimer = 0; g.banners.removeAll()
+        // Board-only check: drop the fixed UI that floats over the board (banners).
+        g.banners.removeAll()
         r.render(g)
         let L = g.ui.layout, o = g.ui.camera.origin
         let ox = ((Int(o.x) % z) + z) % z, oy = ((Int(o.y) % z) + z) % z

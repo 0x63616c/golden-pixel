@@ -1,5 +1,5 @@
 /// The board: cells, fog, effects and balls into the board canvas, then through the camera
-/// into the frame; plus the aim preview and the HUD that floats over the board.
+/// into the frame; plus the HUD that floats over the board.
 extension Renderer {
     /// The board-pixel rectangle the camera can see, padded by a cell.
     func visibleBoardRect(_ g: Game, _ L: Layout) -> (x0: Int, y0: Int, x1: Int, y1: Int) {
@@ -59,6 +59,7 @@ extension Renderer {
         c.fill(vis.x0, vis.y0, vis.x1 - vis.x0, vis.y1 - vis.y0, Palette.black)
         let goldIndex = b.index(b.gold.x, b.gold.y)
         let goldAlive = b.kind[goldIndex] == .gold
+        let shownShards = Set(Fog.shownShards(b))
 
         for y in (vis.y0 / cp)..<min(b.size, (vis.y1 + cp - 1) / cp) {
             for x in (vis.x0 / cp)..<min(b.size, (vis.x1 + cp - 1) / cp) {
@@ -71,7 +72,7 @@ extension Renderer {
                         let gl = Fog.goldGlow(b, x, y, at: t)
                         if gl > 0 { darkGlow(px, py, gl, isGold: i == goldIndex) }
                     }
-                    if b.kind[i] == .shard && Fog.shardSensed(b, i) { sensedShard(px, py, t, i) }
+                    if shownShards.contains(i) { sensedShard(px, py, t, i) }
                     continue
                 }
                 drawCell(g, i, x, y, px, py, cov)
@@ -215,54 +216,49 @@ extension Renderer {
         }
     }
 
-    // MARK: - Aim preview
+    // MARK: - Launch preview
 
-    /// While aiming: the slingshot band from the finger, and the ball's predicted path from
-    /// the launch point (dotted, in the ball's colour), drawn on the frame at 1 px.
-    func drawAim(_ g: Game, _ L: Layout) {
-        guard let a = g.ui.aim else { return }
-        let c = canvas, cam = g.ui.camera, cp = Double(Tuning.cellPixels)
+    /// Placing a ball: a ghost of the selected ball where the finger went down, with a few dots
+    /// in front of it toward the finger (the way it will start flying). With no balls yet, a
+    /// ghost blinks at the spawn with a short prompt.
+    func drawLaunchPreview(_ g: Game, _ L: Layout) {
+        guard g.ui.sheet == nil, !g.ui.skillsOpen, !g.ui.paused, g.clearTimer == nil else { return }
+        let c = canvas, cam = g.ui.camera
+        let k = g.mods.unlocked.contains(g.ui.selected) ? g.ui.selected : .basic
+        let s = max(1, Int(cam.zoom.rounded(.down)))
         c.clip = L.board
-        let lp = g.launchPoint()
-        let lv = cam.toView(lp.x * cp, lp.y * cp)
-        let lx = L.board.x + Int(lv.x.rounded(.down)), ly = L.board.y + Int(lv.y.rounded(.down))
-        if let d = a.direction {
-            var n = 0
-            for p in g.predictPath(d, bounces: 2, maxCells: 40) {
-                let v = cam.toView(Double(p.x), Double(p.y))
-                let x = L.board.x + Int(v.x.rounded(.down)), y = L.board.y + Int(v.y.rounded(.down))
-                if n % 4 < 2 { c.fill(x, y, 2, 2, a.kind.color.glowing(200)) }
-                n += 1
+        if let l = g.ui.launch {
+            c.sprite(Sprites.ball(k), l.from.x - 2 * s, l.from.y - 2 * s, scale: s)
+            if let d = l.pull {
+                let len = (d.x * d.x + d.y * d.y).squareRoot()
+                for j in 0..<4 {
+                    let r = Double(3 * s + 4 + j * 4)
+                    let x = l.from.x + Int((d.x / len * r).rounded()), y = l.from.y + Int((d.y / len * r).rounded())
+                    let big = j < 2
+                    c.fill(x - (big ? 1 : 0), y - (big ? 1 : 0), big ? 2 : 1, big ? 2 : 1, k.color.glowing(160))
+                }
             }
+            c.clip = nil
+            return
         }
+        guard g.balls.isEmpty else { c.clip = nil; return }
+        let cp = Double(Tuning.cellPixels)
+        let sp = g.board.spawn
+        let v = cam.toView((Double(sp.x) + 0.5) * cp, (Double(sp.y) + 0.5) * cp)
+        let lx = L.board.x + Int(v.x.rounded(.down)), ly = L.board.y + Int(v.y.rounded(.down))
+        if Int(g.time * 2) & 1 == 0 { c.sprite(Sprites.ball(k), lx - 2 * s, ly - 2 * s, scale: s) }
         c.clip = nil
-        // The band: from the launch point back toward the finger.
-        c.dottedLine(lx, ly, a.to.x, a.to.y, Palette.muted)
-        c.sprite(Sprites.ballIcon(a.kind), lx - 3, ly - 3)
-        let label = a.direction == nil ? "PULL TO AIM" : "RELEASE TO BUY"
+        let label = "HOLD AN OPEN SPOT, DRAG TO AIM"
         let w = PixelFont.measure(label)
         let tx = L.board.x + (L.board.w - w) / 2, ty = L.board.maxY - 34
         c.fill(tx - 4, ty - 4, w + 8, 15, Palette.black)
-        c.text(label, tx, ty, Palette.text)
+        c.text(label, tx, ty, Palette.text2)
     }
 
     // MARK: - HUD over the board
 
     func drawBoardHUD(_ g: Game, _ L: Layout) {
         let c = canvas
-        // Combo: top-centre, with a bar showing how long it has left.
-        let m = g.comboMultiplier
-        if m > 1.04 {
-            let s = "COMBO x" + format1(m)
-            let w = PixelFont.measure(s)
-            let x = L.board.x + (L.board.w - w) / 2, y = L.board.y + 8
-            let col = m >= 2.5 ? Palette.gold : (m >= 1.8 ? Palette.goldLight : Palette.text)
-            c.fill(x - 4, y - 4, w + 8, 19, Palette.black)
-            c.text(s, x, y, col.glowing(160))
-            let frac = max(0, min(1, g.comboTimer / max(0.01, g.mods.comboWindow)))
-            c.fill(x, y + 10, w, 2, Palette.panel2)
-            c.fill(x, y + 10, Int(Double(w) * frac), 2, col)
-        }
         let z = g.ui.camera
         if z.isAtRest && z.zoom != 1 {
             let s = z.zoom < 1 ? "0.5x" : "\(Int(z.zoom))x"
