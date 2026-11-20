@@ -755,7 +755,18 @@ def report_metadata(client: Client, app: dict, versions: list, version_index: di
             body = client.get_opt(f"/v1/appInfos/{info['id']}/primaryCategory")
             cat = (body or {}).get("data")
         if cat:
-            report.add(f"  - primary category: {cat.get('id')}")
+            sub1 = find(info_index, "appCategories", rel_id(info, "primarySubcategoryOne"))
+            sub2 = find(info_index, "appCategories", rel_id(info, "primarySubcategoryTwo"))
+            secondary = find(info_index, "appCategories", rel_id(info, "secondaryCategory"))
+            extras = []
+            if sub1:
+                extras.append(f"subcategory {sub1.get('id')}")
+            if sub2:
+                extras.append(f"subcategory {sub2.get('id')}")
+            if secondary:
+                extras.append(f"secondary {secondary.get('id')}")
+            suffix = f" ({', '.join(extras)})" if extras else ""
+            report.add(f"  - primary category: {cat.get('id')}{suffix}")
         else:
             report.add("  - primary category: missing")
             report.blocker("Primary category is missing.")
@@ -831,26 +842,44 @@ def report_metadata(client: Client, app: dict, versions: list, version_index: di
             start = attr(price, "startDate") or "current"
             report.add(f"      manual price {pid}: start {start}")
 
-    avail = client.get_opt(f"/v1/apps/{app_id}/appAvailabilityV2", {"include": "territoryAvailabilities", "limit[territoryAvailabilities]": "200"})
-    if not avail or not avail.get("data"):
-        # Older relationship name.
-        avail = client.get_opt(f"/v1/apps/{app_id}/appAvailability")
-    if not avail or not avail.get("data"):
-        report.add("  - availability: not returned by the API (check App Store Connect if territories are selected)")
-        report.note("Territory availability was not returned by the API.")
-    else:
-        data = avail["data"]
-        if isinstance(data, list):
-            data = data[0] if data else {}
-        territories = rel_ids(data, "territoryAvailabilities")
-        available_in_new = attr(data, "availableInNewTerritories")
-        report.add(
-            f"  - availability: {len(territories)} territor"
-            f"{'y' if len(territories) == 1 else 'ies'} listed"
-            + (f", availableInNewTerritories={available_in_new}" if available_in_new is not None else "")
+    try:
+        avail = client.get_opt(
+            f"/v1/apps/{app_id}/appAvailabilityV2",
+            {"include": "territoryAvailabilities", "limit[territoryAvailabilities]": "50"},
         )
-        if not territories:
-            report.blocker("No App Store territories are listed as available.")
+        if not avail or not avail.get("data"):
+            avail = client.get_opt(f"/v1/apps/{app_id}/appAvailability")
+        if not avail or not avail.get("data"):
+            report.add("  - availability: not returned by the API (check App Store Connect if territories are selected)")
+            report.note("Territory availability was not returned by the API.")
+        else:
+            data = avail["data"]
+            if isinstance(data, list):
+                data = data[0] if data else {}
+            territories, _ = [], []
+            # Prefer a paginated relationship list; the include cap is 50.
+            if data.get("id") and "appAvailabilities" in (data.get("type") or "appAvailabilities"):
+                try:
+                    territories_res, _ = client.get_all(
+                        f"/v2/appAvailabilities/{data['id']}/territoryAvailabilities",
+                        {"limit": "50"},
+                    )
+                    territories = [item["id"] for item in territories_res]
+                except HttpError:
+                    territories = rel_ids(data, "territoryAvailabilities")
+            else:
+                territories = rel_ids(data, "territoryAvailabilities")
+            available_in_new = attr(data, "availableInNewTerritories")
+            report.add(
+                f"  - availability: {len(territories)} territor"
+                f"{'y' if len(territories) == 1 else 'ies'} listed"
+                + (f", availableInNewTerritories={available_in_new}" if available_in_new is not None else "")
+            )
+            if not territories:
+                report.blocker("No App Store territories are listed as available.")
+    except HttpError as exc:
+        report.add(f"  - availability: could not be read ({exc})")
+        report.note(f"Territory availability could not be read: {exc}")
 
     # App privacy / data usage — the API often does not expose the published nutrition label.
     report.add()
@@ -865,10 +894,10 @@ def report_metadata(client: Client, app: dict, versions: list, version_index: di
     for path in privacy_paths:
         body = None
         try:
-            body = client.get_opt(path)
+            body = client.get(path)
         except HttpError as exc:
             if exc.status not in (400, 404, 403, 405):
-                report.add(f"  - {path} failed: {exc}")
+                report.add(f"  - privacy endpoint failed: {exc}")
             continue
         if body and body.get("data"):
             privacy_found = True
@@ -951,9 +980,8 @@ def main() -> int:
         report_metadata(client, app, versions, version_index, report)
     except HttpError as exc:
         report.add()
-        report.add(f"The report stopped on an API error: {exc}")
-        report.flush()
-        return 1
+        report.add(f"Part of the report could not be finished: {exc}")
+        report.note(f"The check hit an API error and stopped early: {exc}")
 
     report.section("Summary of blockers")
     if report.blockers:
