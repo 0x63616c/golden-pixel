@@ -121,11 +121,12 @@ public final class Canvas {
         }
     }
 
-    public func sprite(_ s: Sprite, _ x: Int, _ y: Int, tint: Pixel? = nil) {
+    /// Draws a sprite at a whole scale (each sprite pixel becomes a scale x scale block).
+    public func sprite(_ s: Sprite, _ x: Int, _ y: Int, tint: Pixel? = nil, scale: Int = 1) {
         for sy in 0..<s.height {
             for sx in 0..<s.width {
                 guard let p = s.pixels[sy * s.width + sx] else { continue }
-                set(x + sx, y + sy, tint ?? p)
+                if scale == 1 { set(x + sx, y + sy, tint ?? p) } else { fill(x + sx * scale, y + sy * scale, scale, scale, tint ?? p) }
             }
         }
     }

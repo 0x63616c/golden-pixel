@@ -115,7 +115,11 @@ platform :ios do
     app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
     UI.user_error!("No App Store Connect app record for #{BUNDLE_ID}: run the ASC setup workflow (docs/ios.md)") unless app
     version = marketing_version
-    build = latest_testflight_build_number(app_identifier: BUNDLE_ID, version: version, initial_build_number: 0) + 1
+    # Build number = UTC time of the build, YYYYMMDDHHMM (e.g. 202611201445). UTC so it never
+    # goes backwards over a DST change; App Store Connect needs it to keep increasing.
+    build = Time.now.utc.strftime("%Y%m%d%H%M").to_i
+    latest = latest_testflight_build_number(app_identifier: BUNDLE_ID, initial_build_number: 0).to_i
+    UI.user_error!("Build #{build} is not above the latest TestFlight build #{latest}; wait a minute and retry") if build <= latest
     sh("../ios/ios.sh", "archive", build.to_s)
     ipa = Dir[File.expand_path("../ios/build/export/*.ipa", __dir__)].first
     UI.user_error!("No .ipa exported") unless ipa

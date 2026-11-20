@@ -16,22 +16,21 @@ public struct Sprite: Sendable {
     }
 }
 
-/// Every sprite follows one light: from the top-left. Highlights ("h"/"l") sit on the upper
-/// left, shade ("d") on the lower right. Icons that are tinted are flat silhouettes.
+/// Flat sprites: one colour per shape, plus a second flat colour for marks. No highlights or
+/// shading. Icons that get tinted are plain silhouettes.
 public enum Sprites {
-    /// The in-play ball: 5x5 art-pixel circle on a 10x10 block, centred on its middle pixel, lit from the top-left.
+    /// The in-play ball: a flat 5x5 circle on a 10x10 block, centred on its middle pixel.
     public static func ball(_ k: BallKind) -> Sprite { ballCache[k.index] }
 
     /// The ball at HUD size (7x7, matching the font's cap height) with a mark per type.
     public static func ballIcon(_ k: BallKind) -> Sprite { ballIconCache[k.index] }
 
     private static let ballCache: [Sprite] = BallKind.allCases.map { k in
-        Sprite([".ccc.", "chccd", "ccccd", "cccdd", ".ddd."],
-               ["c": k.color.glowing(255), "d": k.shade.glowing(220), "h": Palette.white.glowing(255)])
+        Sprite([".ccc.", "ccccc", "ccccc", "ccccc", ".ccc."], ["c": k.color.glowing(255)])
     }
 
     private static let ballIconCache: [Sprite] = BallKind.allCases.map { k in
-        var rows = ["..ccc..", ".chhcc.", "chhcccd", "cccccdd", "ccccddd", ".cdddd.", "..ddd.."]
+        var rows = ["..ccc..", ".ccccc.", "ccccccc", "ccccccc", "ccccccc", ".ccccc.", "..ccc.."]
         let marks: [(Int, Int)]
         switch k {
         case .basic: marks = []
@@ -45,29 +44,28 @@ public enum Sprites {
         for (x, y) in marks {
             var r = Array(rows[y]); r[x] = "m"; rows[y] = String(r)
         }
-        if k == .bomb { var r = Array(rows[0]); r[5] = "f"; rows[0] = String(r) }
-        return Sprite(rows, ["c": k.color.glowing(200), "d": k.shade.glowing(120), "h": Palette.white.glowing(255),
-                             "m": Palette.black, "f": Palette.gold.glowing(255)])
+        return Sprite(rows, ["c": k.color.glowing(200), "m": Palette.black])
     }
 
     // HUD icons, 7x7 to match the font's 7-pixel caps.
-    public static let coin = Sprite(["..lll..", ".llggg.", "llgdggd", "lggdggd", "lggdggd", ".gggdd.", "..ddd.."],
-                                    ["l": Palette.goldLight.glowing(200), "g": Palette.gold.glowing(160), "d": Palette.goldDim.glowing(80)])
-    public static let star = Sprite(["...l...", "..llg..", "lllgggd", ".lgggd.", "..ggg..", ".gg.dd.", ".g...d."],
-                                    ["l": Palette.goldLight.glowing(200), "g": Palette.gold.glowing(180), "d": Palette.goldDim.glowing(80)])
-    public static let skillPoint = Sprite(["...l...", "..llg..", ".llggd.", "lggggdd", ".ggggd.", "..gdd..", "...d..."],
-                                          ["l": Palette.white.glowing(200), "g": Palette.cyan.glowing(160), "d": rgb(0x1f8f87).glowing(60)])
+    public static let coin = Sprite(["..ggg..", ".ggggg.", "gggdggg", "ggdddgg", "gggdggg", ".ggggg.", "..ggg.."],
+                                    ["g": Palette.gold.glowing(160), "d": Palette.goldDim])
+    public static let star = Sprite(["...g...", "...g...", "ggggggg", ".ggggg.", "..ggg..", ".gg.gg.", ".g...g."],
+                                    ["g": Palette.gold.glowing(180)])
+    /// A shard: a mint diamond.
+    public static let shard = Sprite(["...m...", "..mmm..", ".mmmmm.", "mmmmmmm", ".mmmmm.", "..mmm..", "...m..."],
+                                     ["m": Palette.mint.glowing(170)])
     public static let lock = Sprite(["..###..", ".#...#.", ".#...#.", "#######", "###.###", "###.###", "#######"], ["#": Palette.muted])
     public static let depth = Sprite(["..###..", "..###..", "..###..", "#######", ".#####.", "..###..", "...#..."], ["#": Palette.text2])
 
-    // Tab, stat and setting icons: 7x7 silhouettes in whatever colour the caller tints them.
-    public static let tabBalls = Sprite(["..###..", ".#.####", "#.#####", "#######", "#######", ".#####.", "..###.."], ["#": Palette.text])
-    public static let tabUpgrade = Sprite(["...#...", "..###..", ".#####.", "#######", "..###..", "..###..", "..###.."], ["#": Palette.text])
-    public static let tabSkills = Sprite(["...#...", "..###..", "...#...", ".#.#.#.", ".#####.", ".#...#.", "###.###"], ["#": Palette.text])
-    public static let tabStar = Sprite(["...#...", "...#...", "#######", ".#####.", "..###..", ".##.##.", ".#...#."], ["#": Palette.text])
-    public static let chevronRight = Sprite([".#.....", "..#....", "...#...", "....#..", "...#...", "..#....", ".#....."], ["#": Palette.text2])
-    public static let chevronLeft = Sprite([".....#.", "....#..", "...#...", "..#....", "...#...", "....#..", ".....#."], ["#": Palette.text2])
+    // Button, stat and setting icons: 7x7 silhouettes in whatever colour the caller tints them.
+    public static let tree = Sprite(["...#...", "..###..", "...#...", ".#.#.#.", ".#####.", ".#...#.", "###.###"], ["#": Palette.text])
+    public static let menu = Sprite([".......", "#######", ".......", "#######", ".......", "#######", "......."], ["#": Palette.text])
     public static let close = Sprite(["#.....#", ".#...#.", "..#.#..", "...#...", "..#.#..", ".#...#.", "#.....#"], ["#": Palette.text])
+    public static let play = Sprite(["#......", "###....", "#####..", "#######", "#####..", "###....", "#......"], ["#": Palette.text])
+    public static let info = Sprite(["...#...", ".......", "..##...", "...#...", "...#...", "...#...", "..###.."], ["#": Palette.text])
+    public static let gear = Sprite(["..#.#..", ".#####.", "##...##", ".#...#.", "##...##", ".#####.", "..#.#.."], ["#": Palette.text])
+    public static let aim = Sprite(["...#...", "...#...", ".......", "##.#.##", ".......", "...#...", "...#..."], ["#": Palette.text])
 
     public static let statSpeed = Sprite(["#..#...", ".#..#..", "..#..#.", "...#..#", "..#..#.", ".#..#..", "#..#..."], ["#": Palette.text])
     public static let statDamage = Sprite(["......#", ".....#.", "....#..", "#..#...", ".##....", ".##....", "#..#..."], ["#": Palette.text])
@@ -87,12 +85,18 @@ public enum Sprites {
         case .critDamage: return Sprite(["#.....#", ".#...#.", "..#.#..", "...#...", "..#.#..", ".#...#.", "#.....#"], ["#": Palette.text])
         case .radar: return Sprite(["..###..", ".#...#.", "#..#..#", "#.###.#", "#..#..#", ".#...#.", "..###.."], ["#": Palette.text])
         case .offline: return Sprite(["####...", "..#....", ".#.....", "####...", "....###", ".....#.", "....###"], ["#": Palette.text])
-        case .startCash: return Sprite(["...#...", "..###..", ".#.#.#.", "...#...", "...#...", ".#####.", "......."], ["#": Palette.text])
+        case .cash: return Sprite(["...#...", "..###..", ".#.#.#.", "...#...", "...#...", ".#####.", "......."], ["#": Palette.text])
         case .combo: return Sprite(["#.....#", "##...##", "#.#.#.#", "#..#..#", "#.....#", "#.....#", "#.....#"], ["#": Palette.text])
-        case .tap: return Sprite(["..#....", "..#....", "..####.", "..#####", "#.#####", "#######", ".#####."], ["#": Palette.text])
         case .lantern: return Sprite(["..###..", ".#...#.", ".#####.", "#.###.#", "#.###.#", ".#####.", "..###.."], ["#": Palette.text])
         case .sonar: return Sprite(["#.....#", ".......", "..###..", "..#.#..", "..###..", ".......", "#.....#"], ["#": Palette.text])
         case .unlock(let k): return ballIcon(k)
+        case .ballStat(_, let s):
+            switch s {
+            case .damage: return statDamage
+            case .speed: return statSpeed
+            case .special: return statSpecial
+            }
+        case .ballSpec: return star
         }
     }
 }

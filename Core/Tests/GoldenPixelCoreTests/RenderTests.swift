@@ -3,21 +3,18 @@ import XCTest
 
 final class RenderTests: XCTestCase {
     /// The Duo's inner display renders at 2853 x 2007 px. At 6 device pixels per art pixel the
-    /// canvas is 475 x 334 (2850 x 2004 px: 1.5 px spare per side), the 33 x 33 board of 10x10
-    /// cells (330 px) fits the height, and the panel takes the rest of the width.
+    /// canvas is 475 x 334 (2850 x 2004 px: 1.5 px spare per side). The board view fills the
+    /// left and the panel takes the right.
     func testDuoLayoutFits() {
         let (w, h, s) = (Tuning.canvasWidth, Tuning.canvasHeight, Tuning.artScale)
         XCTAssertEqual(2853 / s, w); XCTAssertEqual(2007 / s, h)
         XCTAssertLessThan(2853 - w * s, s); XCTAssertLessThan(2007 - h * s, s)
-        let L = Layout.make(width: w, height: h, collapsed: false)
-        XCTAssertEqual(L.board.w, Tuning.boardCells * Tuning.cellPixels)
-        XCTAssertEqual(L.board.w, 330)
-        XCTAssertGreaterThanOrEqual(L.board.y, 0)
-        XCTAssertLessThanOrEqual(L.board.maxY, h)
-        XCTAssertLessThanOrEqual(L.board.maxX, L.panel.x)
+        let L = Layout.make(width: w, height: h)
+        XCTAssertEqual(L.board.x, 0); XCTAssertEqual(L.board.h, h)
+        XCTAssertEqual(L.board.maxX, L.panel.x)
         XCTAssertEqual(L.panel.maxX, w)
-        XCTAssertGreaterThanOrEqual(L.panel.w, 136, "room for three 44-px cards")
-        let tall = Layout.make(width: h, height: w, collapsed: false)
+        XCTAssertGreaterThanOrEqual(L.board.w, 300)
+        let tall = Layout.make(width: h, height: w)
         XCTAssertFalse(tall.landscape)
         XCTAssertLessThanOrEqual(tall.board.maxY, tall.panel.y)
     }
@@ -29,76 +26,82 @@ final class RenderTests: XCTestCase {
         var rows = Set<Int>()
         for y in 0..<12 { for x in 0..<40 where c.get(x, y) != Palette.black { rows.insert(y) } }
         XCTAssertEqual(rows, Set(0..<7))
-        for s in ["0123456789", "1.2K", "7.4M", "999B"] { XCTAssertGreaterThan(PixelFont.measure(s), 0) }
+        for s in ["0123456789", "1.2K", "7.4M", "999B", ":"] { XCTAssertGreaterThan(PixelFont.measure(s), 0) }
         XCTAssertNotNil(PixelFont.glyph("K")); XCTAssertNotNil(PixelFont.glyph("M"))
+        let colon = Canvas(width: 8, height: 8)
+        colon.text(":", 0, 0, Palette.white)
+        XCTAssertTrue(colon.pixels.contains(Palette.white), "the colon has ink")
     }
 
-    func testUnrevealedCellsArePureBlackAwayFromTheGold() {
+    /// Board art pixel → canvas pixel at the camera's current (resting) zoom 1 view.
+    func canvasPoint(_ g: Game, _ bx: Int, _ by: Int) -> Point {
+        let o = g.ui.camera.origin, L = g.ui.layout
+        return Point(L.board.x + Int(o.x) + bx, L.board.y + Int(o.y) + by)
+    }
+
+    func testUnrevealedCellsArePureBlackAwayFromTheGoldAndShards() {
         let g = Game(seed: 1)
         g.ui.started = true
         let r = Renderer()
         r.render(g)
         let b = g.board, L = g.ui.layout, cp = Tuning.cellPixels
+        var checked = 0
         for y in 0..<b.size { for x in 0..<b.size where !b.revealed[b.index(x, y)] {
             let dg = hypot(Double(x - b.gold.x), Double(y - b.gold.y))
-            guard dg > Tuning.goldGlowRadius + 1 else { continue }
+            guard dg > Tuning.goldGlowRadius + 1, !Fog.shardSensed(b, b.index(x, y)) else { continue }
             if g.balls.contains(where: { abs($0.x - Double(x)) < 2 && abs($0.y - Double(y)) < 2 }) { continue }
             for py in 0..<cp { for px in 0..<cp {
-                XCTAssertEqual(r.canvas.get(L.board.x + x * cp + px, L.board.y + y * cp + py) & 0x00ff_ffff, 0, "cell \(x),\(y)")
+                let p = canvasPoint(g, x * cp + px, y * cp + py)
+                guard L.board.contains(p) else { continue }
+                XCTAssertEqual(r.canvas.get(p.x, p.y).rgbOnly, 0, "cell \(x),\(y)")
+                checked += 1
             } }
         } }
+        XCTAssertGreaterThan(checked, 1000)
     }
 
-    /// Packed cells have no edges: shading only appears on faces open to dug space, so the
-    /// seam between two solid neighbours is flat colour on both sides.
-    func testNoLinesBetweenPackedCells() {
+    /// Flat: a fully revealed block is one colour, edge to edge, whatever is around it.
+    func testCellsAreFlat() {
         let g = Game(seed: 1)
         g.ui.started = true
         let b = g.board
         for i in b.revealed.indices { b.revealed[i] = true; b.revealedAt[i] = -10 }
+        g.balls.removeAll(); g.particles.removeAll(); g.rings.removeAll()
         let r = Renderer()
         r.render(g)
-        let L = g.ui.layout, cp = Tuning.cellPixels
+        let cp = Tuning.cellPixels, L = g.ui.layout
         var checked = 0
-        for y in 1..<(b.size - 1) { for x in 1..<(b.size - 2) {
-            let i = b.index(x, y), j = b.index(x + 1, y)
-            guard b.kind[i] == .block, b.kind[j] == .block, !b.rich[i], !b.rich[j],
-                  b.hp[i] == b.maxHP[i], b.hp[j] == b.maxHP[j] else { continue }
-            if g.balls.contains(where: { abs($0.x - Double(x + 1)) < 2 && abs($0.y - Double(y)) < 2 }) { continue }
-            let seamY = L.board.y + y * cp + cp / 2
-            let left = r.canvas.get(L.board.x + x * cp + cp - 1, seamY), right = r.canvas.get(L.board.x + (x + 1) * cp, seamY)
-            XCTAssertEqual(left & 0x00ff_ffff, Palette.tiers[Int(b.tier[i])] & 0x00ff_ffff, "no shadow on a covered right face")
-            XCTAssertEqual(right & 0x00ff_ffff, Palette.tiers[Int(b.tier[j])] & 0x00ff_ffff, "no highlight on a covered left face")
+        for y in 0..<b.size { for x in 0..<b.size {
+            let i = b.index(x, y)
+            guard b.kind[i] == .block || b.kind[i] == .wall, !b.rich[i] else { continue }
+            let tl = canvasPoint(g, x * cp, y * cp), br = canvasPoint(g, x * cp + cp - 1, y * cp + cp - 1)
+            guard L.board.contains(tl), L.board.contains(br) else { continue }
+            var colours = Set<Pixel>()
+            for py in 0..<cp { for px in 0..<cp { colours.insert(r.canvas.get(tl.x + px, tl.y + py).rgbOnly) } }
+            XCTAssertEqual(colours.count, 1, "cell \(x),\(y)")
+            let want = b.kind[i] == .wall ? Palette.wall : Palette.tier(Int(b.tier[i]))
+            XCTAssertEqual(colours.first, want.rgbOnly)
             checked += 1
         } }
-        XCTAssertGreaterThan(checked, 100)
+        XCTAssertGreaterThan(checked, 200)
     }
 
-    /// One light, top-left: a block with open space above has a highlight on its top row, and
-    /// a block with open space below has a shadow on its bottom row.
-    func testExposedFacesAreLitFromTheTopLeft() {
+    /// Revealing dithers each cell in from black (no growing squares that leave specks).
+    func testRevealDithersIn() {
         let g = Game(seed: 1)
         g.ui.started = true
         let b = g.board
-        for i in b.revealed.indices { b.revealed[i] = true; b.revealedAt[i] = -10 }
         g.balls.removeAll()
+        let i = b.kind.indices.first { b.kind[$0] == .block && !b.revealed[$0] && Fog.distanceToOpen(b, $0, limit: 5) == 4 }!
+        b.revealed[i] = true
+        b.revealedAt[i] = g.time - Fog.fadeTime / 2
         let r = Renderer()
+        g.ui.camera.look(at: Double((i % b.size) * 10), Double((i / b.size) * 10))
         r.render(g)
-        let L = g.ui.layout, cp = Tuning.cellPixels
-        var lit = 0, shaded = 0
-        for y in 1..<(b.size - 1) { for x in 1..<(b.size - 1) {
-            let i = b.index(x, y)
-            guard b.kind[i] == .block, !b.rich[i], b.hp[i] == b.maxHP[i] else { continue }
-            let t = Int(b.tier[i])
-            let mid = L.board.x + x * cp + cp / 2
-            if b.kindAt(x, y - 1) == .empty {
-                XCTAssertEqual(r.canvas.get(mid, L.board.y + y * cp) & 0x00ff_ffff, Palette.tiersLight[t] & 0x00ff_ffff); lit += 1
-            }
-            if b.kindAt(x, y + 1) == .empty {
-                XCTAssertEqual(r.canvas.get(mid, L.board.y + y * cp + cp - 1) & 0x00ff_ffff, Palette.tiersDark[t] & 0x00ff_ffff); shaded += 1
-            }
-        } }
-        XCTAssertGreaterThan(lit, 0); XCTAssertGreaterThan(shaded, 0)
+        let tl = canvasPoint(g, (i % b.size) * 10, (i / b.size) * 10)
+        var lit = 0
+        for py in 0..<10 { for px in 0..<10 where r.canvas.get(tl.x + px, tl.y + py).rgbOnly != 0 { lit += 1 } }
+        XCTAssertGreaterThan(lit, 30); XCTAssertLessThan(lit, 70)
     }
 
     func testPNGHasTheRightSignature() {
@@ -123,16 +126,27 @@ final class RenderTests: XCTestCase {
         g.particles.removeAll(); g.rings.removeAll()
         let r = Renderer()
         r.render(g)
-        let L = g.ui.layout
-        func px(_ x: Int, _ y: Int) -> Pixel { r.canvas.get(L.board.x + x, L.board.y + y) & 0x00ff_ffff }
+        func px(_ x: Int, _ y: Int) -> Pixel { let p = canvasPoint(g, x, y); return r.canvas.get(p.x, p.y).rgbOnly }
         let s = Sprites.ball(.basic)
         XCTAssertEqual(s.width, 5); XCTAssertEqual(s.height, 5)
-        XCTAssertEqual(px(centre.x, centre.y), s.pixels[12]! & 0x00ff_ffff, "sprite centre on the ball's pixel")
-        // Symmetric silhouette: the corners are empty, the middle row and column are full.
+        XCTAssertEqual(px(centre.x, centre.y), s.pixels[12]!.rgbOnly, "sprite centre on the ball's pixel")
         XCTAssertNil(s.pixels[0]); XCTAssertNil(s.pixels[4]); XCTAssertNil(s.pixels[20]); XCTAssertNil(s.pixels[24])
         for k in 0..<5 { XCTAssertNotNil(s.pixels[2 * 5 + k]); XCTAssertNotNil(s.pixels[k * 5 + 2]) }
-        // Trail dots sit on the centre row.
-        XCTAssertEqual(px(centre.x - 3, centre.y), BallKind.basic.shade & 0x00ff_ffff)
-        XCTAssertEqual(px(centre.x - 6, centre.y), BallKind.basic.shade & 0x00ff_ffff)
+        XCTAssertEqual(px(centre.x - 3, centre.y), BallKind.basic.shade.rgbOnly)
+        XCTAssertEqual(px(centre.x - 6, centre.y), BallKind.basic.shade.rgbOnly)
+    }
+
+    /// Big boards only draw what the camera sees, and a level starts with the spawn in view.
+    func testLevelsStartLookingAtTheSpawn() {
+        for level in [1, 4, 7] {
+            var p = Progress(); p.level = level
+            let g = Game(progress: p)
+            g.ui.started = true
+            Renderer().render(g)
+            let cp = Double(Tuning.cellPixels)
+            let v = g.ui.camera.toView((Double(g.board.spawn.x) + 0.5) * cp, (Double(g.board.spawn.y) + 0.5) * cp)
+            XCTAssertTrue(v.x > 0 && v.y > 0 && v.x < Double(g.ui.layout.board.w) && v.y < Double(g.ui.layout.board.h), "level \(level)")
+            XCTAssertGreaterThan(g.board.pixelSize, g.ui.layout.board.w, "the level is bigger than the screen")
+        }
     }
 }

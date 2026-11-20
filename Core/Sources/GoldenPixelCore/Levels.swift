@@ -1,5 +1,6 @@
-/// Level design. Every board is 33x33 blocks, but each level shapes its own arena inside it
-/// and the rest is solid wall, hidden in the fog until a ball finds it.
+/// Level design. Each level is a big arena (40 to 60+ cells across, far more than one screen)
+/// on a square board sized to fit it; the rest is solid wall, hidden in the fog. Shard pixels
+/// are scattered through it, and their shards add up to the whole skill tree.
 ///
 /// Durability is per cell: every breakable cell rolls its own tier from a seeded, weighted
 /// table that shifts tougher on later levels, so the board is a mixed speckle of durability
@@ -14,26 +15,30 @@ public struct LevelSpec: Sendable {
     public let radius: Int
 
     public static let campaign: [LevelSpec] = [
-        .init(name: "FIRST LIGHT", shape: .blob, radius: 9),
-        .init(name: "TWIN RIDGE", shape: .canyon, radius: 10),
-        .init(name: "THE RING", shape: .ring, radius: 11),
-        .init(name: "PILLARS", shape: .pillars, radius: 12),
-        .init(name: "SPIRAL", shape: .spiral, radius: 13),
-        .init(name: "LABYRINTH", shape: .labyrinth, radius: 14),
-        .init(name: "THE CORE", shape: .core, radius: 15),
+        .init(name: "FIRST LIGHT", shape: .blob, radius: 20),
+        .init(name: "TWIN RIDGE", shape: .canyon, radius: 22),
+        .init(name: "THE RING", shape: .ring, radius: 24),
+        .init(name: "PILLARS", shape: .pillars, radius: 26),
+        .init(name: "SPIRAL", shape: .spiral, radius: 28),
+        .init(name: "LABYRINTH", shape: .labyrinth, radius: 30),
+        .init(name: "THE CORE", shape: .core, radius: 31),
     ]
 
     public static func forLevel(_ level: Int) -> LevelSpec {
         if level >= 1 && level <= campaign.count { return campaign[level - 1] }
         let n = level - campaign.count
         let shapes = Shape.allCases
-        return LevelSpec(name: "DEEP \(n)", shape: shapes[(n * 3) % shapes.count], radius: 15)
+        return LevelSpec(name: "DEEP \(n)", shape: shapes[(n * 3) % shapes.count], radius: 32)
     }
+
+    /// The board is the arena plus a wall rim.
+    public var boardSize: Int { 2 * radius + 5 }
 }
 
 public enum LevelGen {
-    public static func make(level: Int, size: Int = Tuning.boardCells, at t: Double = 0) -> Board {
+    public static func make(level: Int, at t: Double = 0) -> Board {
         let spec = LevelSpec.forLevel(level)
+        let size = spec.boardSize
         let b = Board(size: size, level: level, name: spec.name)
         var rng = RNG(seed: UInt64(level) &* 0x2545_F491_4F6C_DD1D &+ 17)
         let c = size / 2
@@ -154,6 +159,7 @@ public enum LevelGen {
         b.kind[b.index(g.x, g.y)] = .gold
         b.tier[b.index(g.x, g.y)] = 4
         b.rich[b.index(g.x, g.y)] = false
+        placeShards(b, rng: &rng)
 
         // 6. Hit points.
         for i in 0..<(size * size) {
@@ -163,6 +169,9 @@ public enum LevelGen {
                 b.hp[i] = h; b.maxHP[i] = h
             case .gold:
                 let h = Economy.tierHP(4, level: level) * Tuning.goldHPMultiplier
+                b.hp[i] = h; b.maxHP[i] = h
+            case .shard:
+                let h = Economy.tierHP(Tuning.shardTier, level: level)
                 b.hp[i] = h; b.maxHP[i] = h
             default: break
             }
@@ -179,6 +188,40 @@ public enum LevelGen {
         let late: [Double] = [8, 17, 25, 28, 22]
         let s = min(1, Double(max(0, level - 1)) / 12)
         return zip(early, late).map { $0 + ($1 - $0) * s }
+    }
+
+    /// Scatters the level's shard pixels through the arena: spaced apart, away from the spawn
+    /// and the gold, never on a wall. The first two sit just past the starting light so you
+    /// always sense a couple straight away; the rest fan out, and you sense each one as your
+    /// digging gets within `Tuning.shardSenseRadius` of it.
+    static func placeShards(_ b: Board, rng: inout RNG) {
+        var spots: [Point] = []
+        let candidates = b.kind.indices.filter { b.kind[$0] == .block }.map { Point($0 % b.size, $0 / b.size) }
+        func cheb(_ a: Point, _ c: Point) -> Int { max(abs(a.x - c.x), abs(a.y - c.y)) }
+        func ok(_ p: Point) -> Bool {
+            cheb(p, b.gold) > 3 && spots.allSatisfy { cheb($0, p) >= Tuning.shardSpacing }
+        }
+        // Two near starters: 6 to 8 cells from the spawn.
+        let near = candidates.filter { (6...8).contains(cheb($0, b.spawn)) }
+        for _ in 0..<200 where spots.count < 2 && !near.isEmpty {
+            let p = near[rng.int(near.count)]
+            if ok(p) { spots.append(p) }
+        }
+        // The rest anywhere, but not inside the starting light.
+        let far = candidates.filter { cheb($0, b.spawn) >= Tuning.revealRadius + 4 }
+        var tries = 0
+        while spots.count < Tuning.shardsPerLevel && tries < 20_000 && !far.isEmpty {
+            tries += 1
+            let p = far[rng.int(far.count)]
+            if ok(p) { spots.append(p) }
+        }
+        let values = Economy.shardValues(count: spots.count)
+        for (p, v) in zip(spots, values) {
+            let i = b.index(p.x, p.y)
+            b.kind[i] = .shard
+            b.shardValue[i] = v
+            b.rich[i] = false
+        }
     }
 
     static func ringWall(_ b: Board, _ mask: [Bool], _ c: Int, radius: Double, doors: Int, rng: inout RNG) {

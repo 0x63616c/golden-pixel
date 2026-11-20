@@ -25,32 +25,20 @@ public enum Icon {
         let grid = rows.map { Array($0) }
         func at(_ x: Int, _ y: Int) -> Character { x >= 0 && y >= 0 && x < n && y < n ? grid[y][x] : " " }
         var rng = RNG(seed: 11)
-        // No amber: it would fight the gold. Hot tiers crowd the gold, cool ones the edge.
-        let near: [Int] = [3, 4, 3, 4, 1], far: [Int] = [0, 1, 0, 3, 1]
+        // Bright (tough) blues crowd the gold, faint ones the edge. Flat cells, no shading.
+        let near: [Int] = [3, 4, 3, 4, 2], far: [Int] = [0, 1, 0, 2, 1]
         for y in 0..<n {
             for x in 0..<n {
                 let k = at(x, y)
                 guard k != " " else { continue }
-                var base = Palette.panel1, light = base, dark = base
+                var base = Palette.floor
                 if k == "#" {
                     let close = abs(x - 4) <= 1 && abs(y - 3) <= 1
-                    let t = (close ? near : far)[rng.int(5)]
-                    base = Palette.tiers[t]; light = Palette.tiersLight[t]; dark = Palette.tiersDark[t]
+                    base = Palette.tier((close ? near : far)[rng.int(5)])
                 } else if k == "G" {
-                    base = Palette.gold; light = Palette.goldLight; dark = Palette.goldDim
+                    base = Palette.gold
                 }
-                let solid = k != "."
-                let up = solid && at(x, y - 1) == ".", left = solid && at(x - 1, y) == "."
-                let down = solid && at(x, y + 1) == ".", right = solid && at(x + 1, y) == "."
-                for ly in 0..<cp {
-                    for lx in 0..<cp {
-                        var col = base
-                        if (ly == 0 && up) || (lx == 0 && left) { col = light }
-                        if (ly == cp - 1 && down) || (lx == cp - 1 && right) { col = dark }
-                        if k == "G" && lx >= 1 && lx <= 2 && ly >= 1 && ly <= 2 { col = light }
-                        c.set(offX + x * cp + lx, offY + y * cp + ly, col)
-                    }
-                }
+                c.fill(offX + x * cp, offY + y * cp, cp, cp, base)
             }
         }
         // A ball climbing the tunnel, with a two-pixel trail.

@@ -54,8 +54,9 @@ public enum GameEvent: Equatable, Sendable {
     case crit
     case explosion
     case zap
+    /// A UI press (button, toggle, tab).
     case tap
-    case prestige
+    case shardBroken
 }
 
 public final class Game {
@@ -80,12 +81,15 @@ public final class Game {
     var incomeWindow = 0.0
     var incomeClock = 0.0
     var goldSeen = false
+    /// The direction the last ball was aimed (a unit vector); new balls default to it.
+    public var lastAim: (x: Double, y: Double) = (0, -1)
 
     public init(progress: Progress = Progress(), seed: UInt64 = 1) {
         self.progress = progress
         mods = Mods.from(ranks: progress.skillRanks, stars: progress.stars)
         rng = RNG(seed: seed)
         board = LevelGen.make(level: progress.level)
+        centreCamera()
         respawnBalls()
     }
 
@@ -104,6 +108,7 @@ public final class Game {
         board = LevelGen.make(level: progress.level, at: time)
         if let bs = s.board { SaveCodec.restore(bs, into: board) }
         if board.kind[board.index(board.gold.x, board.gold.y)] != .gold { advanceLevel() }
+        centreCamera()
         respawnBalls()
         let away = Economy.offlineEarnings(incomePerSecond: progress.incomeRate, elapsed: now - s.savedAt, mods: mods)
         if away > 0 {
@@ -117,126 +122,117 @@ public final class Game {
 
     // MARK: - Derived stats
 
+    /// A ball type's rank in one of its tree tracks.
+    public func rank(_ k: BallKind, _ s: Stat) -> Int {
+        let suffix: String
+        switch s {
+        case .damage: suffix = "dmg"
+        case .speed: suffix = "spd"
+        case .special: suffix = "sp"
+        }
+        return progress.skillRanks["\(k.rawValue)-\(suffix)"] ?? 0
+    }
+
+    /// True when the specialisation's tree node is owned.
+    public func has(_ spec: String) -> Bool { (progress.skillRanks["spec-\(spec)"] ?? 0) > 0 }
+
     public func speed(_ k: BallKind) -> Double {
-        let p = progress.ball(k)
-        var s = k.type.speed * mods.speed * (1 + 0.06 * Double(p.speed))
-        if p.spec == "blur" { s *= 1.6 }
+        var s = k.type.speed * mods.speed * (1 + 0.12 * Double(rank(k, .speed)))
+        if k == .fast && has("blur") { s *= 1.6 }
         return s
     }
 
     public func damage(_ k: BallKind) -> Double {
-        let p = progress.ball(k)
-        var d = k.type.damage * mods.damage * (1 + 0.25 * Double(p.damage))
-        switch p.spec {
-        case "veteran": d *= 3
-        case "wrecking": d *= 3
-        case "marksman": d *= 2
-        default: break
-        }
+        var d = k.type.damage * mods.damage * (1 + 0.5 * Double(rank(k, .damage)))
+        if k == .basic && has("veteran") { d *= 3 }
+        if k == .heavy && has("wrecking") { d *= 3 }
+        if k == .sniper && has("marksman") { d *= 2 }
         return d
     }
 
-    public func special(_ k: BallKind) -> Double { k.type.special(level: progress.ball(k).special) }
-
-    public func tapDamage() -> Double { mods.tap * mods.damage * pow(Economy.levelHPScale(board.level), 0.75) }
+    public func special(_ k: BallKind) -> Double { k.type.special(rank: rank(k, .special)) }
 
     public func ballCost(_ k: BallKind) -> Double {
-        let p = progress.ball(k)
-        return Economy.ballCost(k, owned: p.owned, spec: p.spec)
+        Economy.ballCost(k, owned: progress.ball(k).owned, swarm: has("swarm"))
     }
 
     public var totalBalls: Int { balls.count }
 
     // MARK: - Actions
 
+    /// Buys a ball and launches it from the launch point along `direction` (a unit vector),
+    /// or along the last aimed direction.
     @discardableResult
-    public func buyBall(_ k: BallKind) -> Bool {
+    public func buyBall(_ k: BallKind, direction: (x: Double, y: Double)? = nil) -> Bool {
         guard mods.unlocked.contains(k), balls.count < Tuning.maxBalls else { events.append(.denied); return false }
         let cost = ballCost(k)
         guard progress.money >= cost else { events.append(.denied); return false }
         progress.money -= cost
         progress.update(k) { $0.owned += 1 }
-        spawnBall(k)
-        events.append(.purchase)
-        return true
-    }
-
-    @discardableResult
-    public func upgrade(_ k: BallKind, _ s: Stat) -> Bool {
-        let p = progress.ball(k)
-        guard mods.unlocked.contains(k), p.owned > 0, let cost = Economy.upgradeCost(k, s, level: p.level(s)), progress.money >= cost else {
-            events.append(.denied); return false
-        }
-        progress.money -= cost
-        progress.update(k) { $0.bump(s) }
-        events.append(.purchase)
-        return true
-    }
-
-    @discardableResult
-    public func specialize(_ k: BallKind, _ which: Int) -> Bool {
-        let p = progress.ball(k)
-        guard Economy.canSpecialize(p), which >= 0, which < k.type.specs.count else { events.append(.denied); return false }
-        progress.update(k) { $0.spec = k.type.specs[which].id }
+        if let d = direction { lastAim = d }
+        launch(k, direction: lastAim)
         events.append(.purchase)
         return true
     }
 
     @discardableResult
     public func buySkill(_ id: String) -> Bool {
-        guard Skills.check(id, ranks: progress.skillRanks, points: progress.skillPoints) == .ok, let s = SkillNode.byID[id] else {
+        guard Skills.check(id, ranks: progress.skillRanks, shards: progress.shards) == .ok, let s = SkillNode.byID[id] else {
             events.append(.denied); return false
         }
-        progress.skillPoints -= s.cost
+        progress.shards -= s.cost
         progress.skillRanks[id, default: 0] += 1
         refreshMods()
-        if case .unlock(let k) = s.effect, progress.ball(k).owned == 0 {
+        switch s.effect {
+        case .unlock(let k) where progress.ball(k).owned == 0:
             // An unlocked type arrives with one ball so it shows up straight away.
             progress.update(k) { $0.owned = 1 }
-            spawnBall(k)
+            launch(k, direction: lastAim)
+        case .cash(let v):
+            progress.money += v * Economy.levelValueScale(board.level)
+        case .ballStat(.heavy, _), .ballSpec(.heavy, _):
+            for i in balls.indices where balls[i].kind == .heavy { balls[i].pierce = basePierce(.heavy) }
+        default: break
         }
         events.append(.purchase)
         return true
     }
 
-    public var prestigeStars: Int { Economy.starsForPrestige(runEarnings: progress.runEarnings, maxLevel: progress.maxLevel) }
-
-    @discardableResult
-    public func prestige() -> Bool {
-        let s = prestigeStars
-        guard s > 0 else { events.append(.denied); return false }
-        let keep = (progress.skillRanks, progress.skillPoints, progress.stars + s, progress.settings, progress.totalEarnings)
-        progress = Progress()
-        (progress.skillRanks, progress.skillPoints, progress.stars, progress.settings, progress.totalEarnings) = keep
-        refreshMods()
-        startLevel(1)
-        events.append(.prestige)
-        banners.append(Banner(text: "+\(s) STARS", color: Palette.gold, life: 2.5, big: true))
-        return true
-    }
-
-    /// A tap on the board at cell (x, y). Works in the dark too.
-    public func tap(cellX x: Int, cellY y: Int) {
-        guard board.inside(x, y), clearTimer == nil else { return }
+    /// What a tap on the board says about cell (x, y): only ever what you can already see.
+    /// Taps never damage anything; only balls break pixels.
+    public func describe(cellX x: Int, cellY y: Int) -> [String]? {
+        guard board.inside(x, y) else { return nil }
         let i = board.index(x, y)
-        events.append(.tap)
-        rings.append(Ring(x: Double(x) + 0.5, y: Double(y) + 0.5, maxRadius: 1.2, life: 0.18, maxLife: 0.18, color: Palette.white, overFog: true))
+        guard board.revealed[i] else { return nil }
         switch board.kind[i] {
-        case .block, .gold: _ = damageCell(i, tapDamage())
-        case .wall: revealWall(i)
-        case .empty: break
+        case .block: return ["PIXEL", "HP \(compact(board.hp[i].rounded(.up)))"]
+        case .shard: return ["SHARD +\(board.shardValue[i])", "HP \(compact(board.hp[i].rounded(.up)))"]
+        case .gold: return ["GOLDEN PIXEL", "HP \(compact(board.hp[i].rounded(.up)))"]
+        case .wall: return ["ROCK", "UNBREAKABLE"]
+        case .empty: return nil
         }
     }
 
     // MARK: - Level flow
 
+    /// Starts a level as a fresh run: one basic ball, no coins, an empty tree, no shards.
+    /// Stars, settings and lifetime totals carry over.
     func startLevel(_ level: Int) {
+        if progress.level != level { progress.lastClearTime = progress.levelTime }
         progress.level = level
         progress.maxLevel = max(progress.maxLevel, level)
+        progress.money = 0
+        progress.runEarnings = 0
+        progress.shards = 0
+        progress.levelTime = 0
+        progress.skillRanks = SkillNode.startingRanks
+        progress.balls = [BallKind.basic.rawValue: BallProgress(owned: 1)]
+        refreshMods()
         board = LevelGen.make(level: level, at: time)
         goldSeen = false
         clearTimer = nil
-        if mods.startCash > 0 { progress.money += mods.startCash }
+        lastAim = (0, -1)
+        centreCamera()
         respawnBalls()
         events.append(.levelStart(level))
         banners.append(Banner(text: "\(level) \(board.name)", color: Palette.text, life: 2.2, big: false))
@@ -244,27 +240,99 @@ public final class Game {
 
     func advanceLevel() { startLevel(progress.level + 1) }
 
+    /// Wipes everything, settings aside, and starts again from level 1.
+    public func resetProgress() {
+        let settings = progress.settings
+        progress = Progress()
+        progress.settings = settings
+        startLevel(1)
+        banners.removeAll()
+    }
+
+    /// Points the camera at the spawn at zoom 1, where every level starts.
+    func centreCamera() {
+        let L = ui.layout
+        ui.camera = Camera(boardW: board.pixelSize, boardH: board.pixelSize, viewW: L.board.w, viewH: L.board.h)
+        let cp = Double(Tuning.cellPixels)
+        ui.camera.look(at: (Double(board.spawn.x) + 0.5) * cp, (Double(board.spawn.y) + 0.5) * cp)
+    }
+
     func respawnBalls() {
         balls.removeAll()
         for k in BallKind.allCases {
             let n = min(progress.ball(k).owned, Tuning.maxBalls - balls.count)
-            for _ in 0..<max(0, n) { spawnBall(k) }
+            for j in 0..<max(0, n) {
+                // Fan the starting balls out so they don't travel as one clump.
+                let a = -Double.pi / 2 + Double(j) * 2.39996
+                launch(k, direction: (cos(a), sin(a)))
+            }
         }
     }
 
-    func spawnBall(_ k: BallKind) {
-        let a = rng.range(0, 6.283185)
-        let sx = Double(board.spawn.x) + 0.5 + rng.range(-0.6, 0.6)
-        let sy = Double(board.spawn.y) + 0.5 + rng.range(-0.6, 0.6)
-        var b = Ball(kind: k, x: sx, y: sy, vx: cos(a), vy: sin(a))
+    /// Where new balls start: the open cell nearest the middle of the view, so they appear
+    /// where you're looking. Falls back to the spawn.
+    public func launchPoint() -> (x: Double, y: Double) {
+        let cp = Double(Tuning.cellPixels)
+        let c = ui.camera.toBoard(Double(ui.camera.viewW) / 2, Double(ui.camera.viewH) / 2)
+        let cx = Int(c.x / cp), cy = Int(c.y / cp)
+        var best: (Int, Int)?
+        for r in 0...12 {
+            for dy in -r...r { for dx in -r...r where max(abs(dx), abs(dy)) == r {
+                let x = cx + dx, y = cy + dy
+                guard board.inside(x, y), board.kind[board.index(x, y)] == .empty else { continue }
+                let d = dx * dx + dy * dy
+                if best == nil || d < best!.0 { best = (d, board.index(x, y)) }
+            } }
+            if best != nil { break }
+        }
+        guard let (_, i) = best else { return (Double(board.spawn.x) + 0.5, Double(board.spawn.y) + 0.5) }
+        return (Double(i % board.size) + 0.5, Double(i / board.size) + 0.5)
+    }
+
+    func launch(_ k: BallKind, direction d: (x: Double, y: Double)) {
+        let p = launchPoint()
+        let len = max(1e-6, (d.x * d.x + d.y * d.y).squareRoot())
+        var b = Ball(kind: k, x: p.x, y: p.y, vx: d.x / len, vy: d.y / len)
         b.pierce = basePierce(k)
         b.phaseTimer = rng.range(0.5, 3)
         balls.append(b)
     }
 
+    /// Where a ball launched from the launch point along `d` would go: its first stretch of
+    /// path with up to `bounces` bounces, in board art pixels. Stops at the fog.
+    public func predictPath(_ d: (x: Double, y: Double), bounces: Int = 2, maxCells: Double = 30) -> [Point] {
+        let p = launchPoint()
+        let len = max(1e-6, (d.x * d.x + d.y * d.y).squareRoot())
+        var x = p.x, y = p.y, vx = d.x / len, vy = d.y / len
+        var out: [Point] = []
+        var travelled = 0.0, left = bounces
+        let r = Tuning.ballRadius, cp = Double(Tuning.cellPixels)
+        while travelled < maxCells {
+            let step = 0.05
+            let nx = x + vx * step, ny = y + vy * step
+            travelled += step
+            let cx = Int(nx.rounded(.down)), cy = Int(ny.rounded(.down))
+            guard board.inside(cx, cy), board.revealed[board.index(cx, cy)] else { break }
+            // Bounce off the solid side the ball's edge would enter.
+            let hitX = board.kindAt(Int((nx + (vx > 0 ? r : -r)).rounded(.down)), Int(y.rounded(.down))) != .empty
+            let hitY = board.kindAt(Int(x.rounded(.down)), Int((ny + (vy > 0 ? r : -r)).rounded(.down))) != .empty
+            if hitX || hitY {
+                if left == 0 { break }
+                left -= 1
+                if hitX { vx = -vx }
+                if hitY { vy = -vy }
+                continue
+            }
+            x = nx; y = ny
+            let pt = Point(Int((x * cp).rounded(.down)), Int((y * cp).rounded(.down)))
+            if out.last != pt { out.append(pt) }
+        }
+        return out
+    }
+
     func basePierce(_ k: BallKind) -> Int {
         guard k == .heavy else { return 0 }
-        return progress.ball(.heavy).spec == "juggernaut" ? 1_000_000 : Int(special(.heavy))
+        return has("juggernaut") ? 1_000_000 : Int(special(.heavy))
     }
 
     // MARK: - Damage
@@ -273,7 +341,7 @@ public final class Game {
     @discardableResult
     func damageCell(_ i: Int, _ amount: Double) -> Bool {
         let k = board.kind[i]
-        guard k == .block || k == .gold else { return false }
+        guard k.breakable else { return false }
         board.hp[i] -= amount
         board.hitAt[i] = time
         if board.hp[i] > 0 { return false }
@@ -284,6 +352,7 @@ public final class Game {
     func breakCell(_ i: Int) {
         let x = i % board.size, y = i / board.size
         let wasGold = board.kind[i] == .gold
+        let wasShard = board.kind[i] == .shard
         let tier = Int(board.tier[i])
         let shown = board.revealed[i]
         comboTimer > 0 ? (combo += 1) : (combo = 1)
@@ -293,10 +362,18 @@ public final class Game {
         earn(value * mods.money, combo: true)
         board.kind[i] = .empty
         board.hp[i] = 0
-        // A block breaks from its grey last step, so its dust is grey.
-        let color = wasGold ? Palette.gold : (shown ? Palette.ladder[0] : Palette.text2)
-        let fade = wasGold ? Palette.goldDim : (shown ? Palette.ladderDark[0] : Palette.border)
-        for _ in 0..<(wasGold ? 40 : 5) {
+        if wasShard {
+            let v = board.shardValue[i]
+            board.shardValue[i] = 0
+            progress.shards += v
+            events.append(.shardBroken)
+            banners.append(Banner(text: "+\(v) SHARDS", color: Palette.mint, life: 1.6, big: false))
+            rings.append(Ring(x: Double(x) + 0.5, y: Double(y) + 0.5, maxRadius: 3, life: 0.5, maxLife: 0.5, color: Palette.mint, overFog: true))
+        }
+        // A block breaks from its faint last step, so its dust is the faint blue.
+        let color = wasGold ? Palette.gold : (wasShard ? Palette.mint : (shown ? Palette.ladder[1] : Palette.muted))
+        let fade = wasGold ? Palette.goldDim : (wasShard ? Palette.mintDim : (shown ? Palette.ladder[0] : Palette.border))
+        for _ in 0..<(wasGold ? 40 : (wasShard ? 16 : 5)) {
             let a = rng.range(0, 6.283185), s = rng.range(2, wasGold ? 14 : 7)
             let life = rng.range(0.25, wasGold ? 1.4 : 0.55)
             particles.append(Particle(x: Double(x) + 0.5, y: Double(y) + 0.5, vx: cos(a) * s, vy: sin(a) * s - 2,
@@ -316,14 +393,14 @@ public final class Game {
     func goldBroken(_ x: Int, _ y: Int) {
         events.append(.goldBroken)
         shake = 1
-        let sp = Economy.skillPointsForClear(board.level)
-        progress.skillPoints += sp
+        progress.stars += 1
+        refreshMods()
         for r in 0..<3 {
             rings.append(Ring(x: Double(x) + 0.5, y: Double(y) + 0.5, maxRadius: 8 + Double(r) * 7,
                               life: 0.8 + Double(r) * 0.25, maxLife: 0.8 + Double(r) * 0.25, color: Palette.gold, overFog: true))
         }
         banners.append(Banner(text: "GOLD!", color: Palette.gold, life: Tuning.levelClearPause, big: true))
-        banners.append(Banner(text: "+\(sp) SKILL", color: Palette.cyan, life: Tuning.levelClearPause, big: false))
+        banners.append(Banner(text: "+1 STAR", color: Palette.goldLight, life: Tuning.levelClearPause, big: false))
         // The whole level lights up so you can see what you dug through.
         for i in 0..<board.revealed.count where !board.revealed[i] {
             board.revealed[i] = true

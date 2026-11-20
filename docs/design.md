@@ -1,6 +1,22 @@
 # Design
 
-**The board is the hero.** Everything else is a thin panel on the right, icons and numbers.
+**The board is the hero.** Everything else is a panel on the right: coins, shards, the TREE
+and MENU buttons, and one row per ball type.
+
+## How a level plays
+
+- **Only balls break pixels.** Taps on the board just say what's there; drags pan.
+- **Coins buy balls.** Tap a ball row for its info sheet (big BUY button); drag a row to aim
+  it like a slingshot (it launches opposite the drag, with a dotted path preview) and let go
+  to buy.
+- **Shards buy the skill tree.** Glowing mint shard pixels pay shards; a level's shards add up
+  to the whole tree. You sense a shard through the dark once your light gets within 6 cells.
+  The tree holds the general skills and every ball type's upgrades (unlock, damage, speed,
+  special, two specialisations).
+- **Break the gold to clear the level.** Each gold is a star for good (+5% damage, +10%
+  coins). Every level starts fresh: coins, shards, tree and balls reset.
+- Levels are 45 to 67 cells across, much bigger than the screen; the camera starts on the
+  spawn and pinches between 0.5x, 1x, 2x, 3x and 4x.
 
 ## Rules of the look
 
@@ -9,22 +25,26 @@
   gradients (ordered dither instead), no sub-pixel positions.
 - **Cells are 10 x 10.** Balls are 5 x 5 circles with a true centre pixel; trails are drawn
   through past centre pixels so the tail is centred.
-- **Durability is colour alone.** A block walks down crimson > pink > amber > lime > green >
-  grey, one step per hit unit (bigger hits skip steps), flashing white for one frame per hit;
-  the hit after grey breaks it. No crack marks. Walls are bone white, far brighter than grey.
-- **One light, top-left.** Packed cells are flat colour, so a mass of cells reads as one
-  surface with no lines between cells. Only faces open to dug space are shaded: 1 pixel of
-  highlight on exposed top and left faces, 1 pixel of shadow on exposed bottom and right
-  faces. Walls, balls, icons, cards and buttons follow the same rule.
-- **Durability is per cell.** Every breakable cell rolls its own starting colour (green, lime,
-  amber, pink, crimson) from a seeded table that leans tougher each level. Walls are the only
-  unbreakable cells; the golden pixel is its own kind.
+- **Durability is brightness alone.** Blocks are one blue hue: bright = tough, faint = one
+  hit left. A block steps down one shade per hit unit (bigger hits skip steps), flashing white
+  for one frame per hit; the hit after the faintest shade breaks it. No crack marks.
+- **Flat.** One colour per surface: no highlights, shadows or bevels on cells, sprites,
+  cards or buttons. Packed cells read as one surface with no lines between them. Walls are a
+  neutral dark grey, never brighter than the blocks, so nothing pale floats in the dark.
+- **Durability is per cell.** Every breakable cell rolls its own starting shade from a seeded
+  table that leans tougher each level. Walls are the only unbreakable cells; the golden pixel
+  and the mint shards are their own kinds.
+- **Rounded corners.** The Duo's inner screen has heavily rounded corners
+  (`Tuning.cornerRadius`): no button or text sits in them, and every button is at least
+  `Tuning.minTouch` (22 art px = 44 pt) square. `UISafetyTests` checks both.
 - **Fog of war.** Visible = within 3 cells (Chebyshev) of open space. A level starts as the
   spawn pocket plus a 3-cell border; every break pushes the light 3 cells further, opening
-  with a square iris per cell. Unrevealed cells are pure black. The gold pulses faintly a few
-  cells into the dark; Lantern widens the radius, Radar boxes the gold, Sonar pings.
+  by dithering each cell in from black. Unrevealed cells are pure black. The gold pulses
+  faintly a few cells into the dark, sensed shards breathe in dim mint; Lantern widens the
+  radius, Radar boxes the gold, Sonar pings.
 - **Type.** Pixel Operator 8 (CC0): 7-pixel caps, proportional. HUD icons are 7 x 7.
-- **Palette.** "Vercel Neon": black, Vercel greys, gold for the gold and money only.
+- **Palette.** Black and cool greys, a blue durability ramp, gold for the gold and coins
+  only, mint for shards.
 
 ## Compared with the web version
 

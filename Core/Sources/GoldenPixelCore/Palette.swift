@@ -17,42 +17,55 @@ public extension Pixel {
     var green: UInt8 { UInt8((self >> 8) & 0xff) }
     var blue: UInt8 { UInt8((self >> 16) & 0xff) }
     var glow: UInt8 { UInt8(self >> 24) }
+    /// The colour without its glow byte, for comparisons.
+    var rgbOnly: Pixel { self & 0x00ff_ffff }
 }
 
-/// "Vercel Neon": pure black, Vercel's greys, and a few vivid accents. Every colour on screen
-/// comes from here. Gold is reserved for the golden pixel and money.
+/// Flat colours only: no highlights, no shadows, no bevels. Every colour on screen comes from
+/// here. Blocks are one hue (blue) whose brightness is their durability; gold is reserved for
+/// the golden pixel and coins, mint for shards.
 public enum Palette {
     public static let black = rgb(0x000000)
-    public static let panel0 = rgb(0x0a0a0a)
-    public static let panel1 = rgb(0x111111)
-    public static let panel2 = rgb(0x1a1a1a)
-    public static let border = rgb(0x333333)
-    public static let muted = rgb(0x666666)
-    public static let text2 = rgb(0xa1a1a1)
-    public static let text = rgb(0xededed)
+    public static let panel0 = rgb(0x0b0c10)
+    public static let panel1 = rgb(0x14161d)
+    public static let panel2 = rgb(0x1e212b)
+    public static let panel3 = rgb(0x2a2e3b)
+    public static let border = rgb(0x343948)
+    public static let muted = rgb(0x6b7285)
+    public static let text2 = rgb(0xa3aabb)
+    public static let text = rgb(0xeef0f5)
     public static let white = rgb(0xffffff)
 
-    /// Unbreakable rock: bone white, far brighter than a grey last-hit block.
-    public static let wall = rgb(0xededed)
-    public static let wallLight = rgb(0xffffff)
-    public static let wallShade = rgb(0xa1a1a1)
+    /// Explored floor: one flat step above the fog's pure black.
+    public static let floor = rgb(0x0e1016)
+    /// Unbreakable rock: a neutral dark grey, never brighter than the blocks around it.
+    public static let wall = rgb(0x2b2b2e)
 
-    public static let gold = rgb(0xffd500)
-    public static let goldLight = rgb(0xfff27a)
-    public static let goldDim = rgb(0x806a00)
-    public static let goldDeep = rgb(0x403500)
+    public static let gold = rgb(0xffd23f)
+    public static let goldLight = rgb(0xffe98a)
+    public static let goldDim = rgb(0x9c7a10)
+    public static let goldDeep = rgb(0x4a3a08)
 
-    public static let blue = rgb(0x0070f3)
-    public static let cyan = rgb(0x50fff0)
+    /// Shard pixels and the shard currency.
+    public static let mint = rgb(0x4dffc3)
+    public static let mintDim = rgb(0x1f8a66)
+    public static let mintDeep = rgb(0x0d3d2d)
 
-    /// The durability ladder a block walks down as it is hit: crimson, pink, amber, lime,
-    /// green, then dim grey on its last hit point. Index = `Economy.ladderStep`.
-    public static let ladder: [Pixel] = [0x555555, 0x00e676, 0xd4ff3a, 0xffb224, 0xff1f5a, 0xb4005a].map { rgb($0) }
-    public static let ladderLight: [Pixel] = [0x777777, 0x7dffb8, 0xeaff9c, 0xffd88a, 0xff8aa8, 0xe0428f].map { rgb($0) }
-    public static let ladderDark: [Pixel] = [0x3a3a3a, 0x00914a, 0x86a324, 0xa87416, 0xa3143a, 0x6e0037].map { rgb($0) }
+    /// Buttons and selection.
+    public static let accent = rgb(0x3d7bff)
+    public static let accentDim = rgb(0x1c3a7a)
+    public static let danger = rgb(0xff4f5e)
 
-    /// Durability ramp, cool to hot: green, acid lime, amber, hot pink, crimson.
-    public static let tiers: [Pixel] = [0x00e676, 0xd4ff3a, 0xffb224, 0xff1f5a, 0xb4005a].map { rgb($0) }
-    public static let tiersLight: [Pixel] = [0x7dffb8, 0xeaff9c, 0xffd88a, 0xff8aa8, 0xe0428f].map { rgb($0) }
-    public static let tiersDark: [Pixel] = [0x00914a, 0x86a324, 0xa87416, 0xa3143a, 0x6e0037].map { rgb($0) }
+    /// The durability ladder, faintest (one hit left) to brightest (toughest): one blue hue.
+    /// Index = `Economy.ladderStep`; a fresh tier-t block shows step t + 1.
+    public static let ladder: [Pixel] = [0x1d2c52, 0x22408a, 0x2858c4, 0x3a78f0, 0x74a3ff, 0xb9d2ff].map { rgb($0) }
+
+    /// The colour a fresh block of tier t shows.
+    public static func tier(_ t: Int) -> Pixel { ladder[min(ladder.count - 1, t + 1)] }
+
+    /// Half brightness, for faded particles and rings.
+    public static func dimmer(_ p: Pixel) -> Pixel {
+        let r = (p & 0xff) / 2, g = ((p >> 8) & 0xff) / 2, b = ((p >> 16) & 0xff) / 2
+        return r | (g << 8) | (b << 16)
+    }
 }

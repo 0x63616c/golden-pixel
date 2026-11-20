@@ -1,4 +1,7 @@
 /// Prices, payouts and the modifiers skills and stars give. Plain values in, plain values out.
+///
+/// Two currencies: coins (from breaking pixels) buy balls; shards (from the glowing shard
+/// pixels) buy the skill tree, which holds every upgrade including each ball type's own.
 
 #if canImport(Darwin)
 import Darwin
@@ -8,75 +11,37 @@ import Glibc
 
 public struct BallProgress: Codable, Equatable, Sendable {
     public var owned = 0
-    public var speed = 0
-    public var damage = 0
-    public var special = 0
-    public var spec: String?
-
     public init(owned: Int = 0) { self.owned = owned }
-
-    public func level(_ s: Stat) -> Int {
-        switch s {
-        case .speed: return speed
-        case .damage: return damage
-        case .special: return special
-        }
-    }
-
-    public mutating func bump(_ s: Stat) {
-        switch s {
-        case .speed: speed += 1
-        case .damage: damage += 1
-        case .special: special += 1
-        }
-    }
-
-    public var upgradeTotal: Int { speed + damage + special }
 }
 
 public enum Economy {
-    /// A type can pick one of its two specialisations once its upgrades add up to this.
-    public static let specMilestone = 10
-
-    public static func ballCost(_ k: BallKind, owned: Int, spec: String?) -> Double {
+    public static func ballCost(_ k: BallKind, owned: Int, swarm: Bool = false) -> Double {
         let t = k.type
         // The free starting basic ball does not count towards its price.
         let n = k == .basic ? max(0, owned - 1) : owned
-        let discount = (k == .basic && spec == "swarm") ? 0.6 : 1
+        let discount = (k == .basic && swarm) ? 0.6 : 1
         return (t.baseCost * pow(t.costGrowth, Double(n)) * discount).rounded()
     }
-
-    static let statCost: [Stat: (mult: Double, growth: Double)] = [
-        .speed: (2, 1.6), .damage: (3, 1.55), .special: (5, 1.8),
-    ]
-
-    /// nil when the stat is maxed.
-    public static func upgradeCost(_ k: BallKind, _ s: Stat, level: Int) -> Double? {
-        guard level < s.max, let c = statCost[s] else { return nil }
-        return (k.type.baseCost * c.mult * pow(c.growth, Double(level))).rounded()
-    }
-
-    public static func canSpecialize(_ p: BallProgress) -> Bool { p.spec == nil && p.upgradeTotal >= specMilestone }
 
     public static func levelHPScale(_ level: Int) -> Double { pow(1.85, Double(level - 1)) }
     public static func levelValueScale(_ level: Int) -> Double { pow(1.75, Double(level - 1)) }
     public static func tierHP(_ tier: Int, level: Int) -> Double { Tuning.tierHP[tier] * levelHPScale(level) }
 
-    /// One step of the durability ladder on a level: the HP of one colour.
+    /// One step of the durability ladder on a level: the HP of one shade.
     public static func hitUnit(level: Int) -> Double { levelHPScale(level) }
 
-    /// Which colour a block shows: 0 = grey (one step left), 1 green ... 5 crimson.
+    /// Which shade a block shows: 0 = faintest (one step left) ... 5 = brightest (toughest).
     public static func ladderStep(hp: Double, level: Int) -> Int {
         let steps = Int((hp / hitUnit(level: level) - 1e-9).rounded(.up))
         return max(0, min(Palette.ladder.count - 1, steps - 1))
     }
     public static func tierValue(_ tier: Int, level: Int) -> Double { Tuning.tierValue[tier] * levelValueScale(level) }
-    public static func skillPointsForClear(_ level: Int) -> Int { 2 + level / 2 }
 
-    /// Stars a prestige would award now. Nothing before level 3.
-    public static func starsForPrestige(runEarnings: Double, maxLevel: Int) -> Int {
-        guard maxLevel >= 3 else { return 0 }
-        return Int(sqrt(max(0, runEarnings) / 40000).rounded(.down))
+    /// Splits the level's shards (the whole tree's price) across its shard pixels as evenly
+    /// as whole numbers allow.
+    public static func shardValues(count: Int, total: Int = SkillNode.totalCost) -> [Int] {
+        guard count > 0 else { return [] }
+        return (0..<count).map { total / count + ($0 < total % count ? 1 : 0) }
     }
 
     public static func comboMultiplier(_ streak: Int) -> Double {
@@ -90,7 +55,7 @@ public enum Economy {
     }
 }
 
-/// What skills and prestige stars add up to.
+/// What skills and stars add up to.
 public struct Mods: Equatable, Sendable {
     public var damage = 1.0
     public var speed = 1.0
@@ -101,17 +66,15 @@ public struct Mods: Equatable, Sendable {
     public var lantern = 0
     public var sonar = 0
     public var offline = 0.1
-    public var startCash = 0.0
     public var comboWindow = 1.2
-    public var tap = 4.0
     public var unlocked: Set<BallKind> = [.basic]
 
     public var revealRadius: Int { Tuning.revealRadius + lantern }
 
     public static func from(ranks: [String: Int], stars: Int) -> Mods {
         var m = Mods()
-        m.damage += Double(stars) * 0.05
-        m.money += Double(stars) * 0.1
+        m.damage += Double(stars) * Tuning.starDamage
+        m.money += Double(stars) * Tuning.starMoney
         for s in SkillNode.all {
             let r = ranks[s.id] ?? 0
             guard r > 0 else { continue }
@@ -126,10 +89,9 @@ public struct Mods: Equatable, Sendable {
             case .lantern: m.lantern = r
             case .sonar: m.sonar = r
             case .offline(let p): m.offline += p * rd
-            case .startCash(let p): m.startCash += p * rd
             case .combo(let p): m.comboWindow += p * rd
-            case .tap(let p): m.tap += p * rd
             case .unlock(let k): m.unlocked.insert(k)
+            case .cash, .ballStat, .ballSpec: break
             }
         }
         return m
@@ -139,12 +101,18 @@ public struct Mods: Equatable, Sendable {
 public enum SkillCheck: Equatable { case ok, maxed, locked, poor }
 
 public enum Skills {
-    public static func check(_ id: String, ranks: [String: Int], points: Int) -> SkillCheck {
+    public static func check(_ id: String, ranks: [String: Int], shards: Int) -> SkillCheck {
         guard let s = SkillNode.byID[id] else { return .locked }
         let r = ranks[id] ?? 0
         if r >= s.ranks { return .maxed }
         // Every prerequisite needs at least one rank.
         if !s.requires.allSatisfy({ (ranks[$0] ?? 0) > 0 }) { return .locked }
-        return points >= s.cost ? .ok : .poor
+        return shards >= s.cost ? .ok : .poor
+    }
+
+    /// Shown in the tree: anything owned, or anything you could buy next. Locked nodes stay
+    /// hidden until their prerequisites are met.
+    public static func visible(_ id: String, ranks: [String: Int]) -> Bool {
+        (ranks[id] ?? 0) > 0 || check(id, ranks: ranks, shards: 0) != .locked
     }
 }

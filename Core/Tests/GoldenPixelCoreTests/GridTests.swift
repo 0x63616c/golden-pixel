@@ -53,16 +53,14 @@ final class GridTests: XCTestCase {
         let r = Renderer()
         g.shake = 0
         // Board-only check: drop the fixed UI that floats over the board (combo, banners).
-        g.combo = 0; g.banners.removeAll()
+        g.combo = 0; g.comboTimer = 0; g.banners.removeAll()
         r.render(g)
         let L = g.ui.layout, o = g.ui.camera.origin
         let ox = ((Int(o.x) % z) + z) % z, oy = ((Int(o.y) % z) + z) % z
-        // Crop the board view and check zoom x zoom blocks from the board's phase.
         var crop = [Pixel](repeating: 0, count: L.board.w * L.board.h)
         for y in 0..<L.board.h { for x in 0..<L.board.w { crop[y * L.board.w + x] = r.canvas.get(L.board.x + x, L.board.y + y) } }
-        // The HUD zoom badge sits on top of the board; blank it out.
-        // (Blanked on the board's block phase, so the blank itself doesn't split a block.)
-        let bx0 = L.board.w - 34 - ((L.board.w - 34 - ox) % z), by1 = oy + z * ((16 - oy + z - 1) / z)
+        // The zoom badge sits on top of the board; blank it out on the board's block phase.
+        let bx0 = L.board.w - 40 - ((L.board.w - 40 - ox) % z), by1 = oy + z * ((24 - oy + z - 1) / z)
         for y in 0..<by1 { for x in bx0..<L.board.w { crop[y * L.board.w + x] = 0 } }
         assertBlocksSolid(crop, width: L.board.w, height: L.board.h, n: z, x0: ox, y0: oy, "zoom \(z)")
     }

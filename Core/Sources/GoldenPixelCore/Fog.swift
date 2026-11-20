@@ -74,6 +74,20 @@ public enum Fog {
         return max(0, 1 - d / (Tuning.goldGlowRadius + 0.5)) * pulse
     }
 
+    /// A hidden shard pixel shows through the dark once any revealed cell is within
+    /// `Tuning.shardSenseRadius` cells of it (Chebyshev): you sense the next few as you dig
+    /// toward them, never the whole level at once.
+    public static func shardSensed(_ b: Board, _ i: Int, radius: Int = Tuning.shardSenseRadius) -> Bool {
+        guard b.kind[i] == .shard, !b.revealed[i] else { return false }
+        let x = i % b.size, y = i / b.size
+        for dy in -radius...radius {
+            for dx in -radius...radius where b.inside(x + dx, y + dy) && b.revealed[b.index(x + dx, y + dy)] {
+                return true
+            }
+        }
+        return false
+    }
+
     /// The radar's hint square around the gold, or nil without the skill. Deterministic per
     /// level, and the gold is always inside it.
     public static func radarHint(_ b: Board, rank: Int) -> (center: Point, radius: Int)? {

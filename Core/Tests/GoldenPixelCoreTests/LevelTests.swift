@@ -25,7 +25,8 @@ final class LevelTests: XCTestCase {
         let radii = LevelSpec.campaign.map(\.radius)
         XCTAssertEqual(radii, radii.sorted())
         XCTAssertEqual(Set(radii).count, radii.count)
-        XCTAssertLessThan(radii.last!, Tuning.boardCells / 2, "every arena fits the board with a wall rim")
+        for spec in LevelSpec.campaign { XCTAssertLessThan(spec.radius, spec.boardSize / 2, "every arena fits its board with a wall rim") }
+        XCTAssertGreaterThanOrEqual(LevelSpec.campaign[0].boardSize, 45, "levels are far bigger than one screen")
         XCTAssertGreaterThan(LevelGen.make(level: 7).blocksLeft, LevelGen.make(level: 1).blocksLeft)
     }
 
@@ -89,6 +90,7 @@ final class LevelTests: XCTestCase {
                 switch b.kind[i] {
                 case .block: XCTAssertGreaterThan(b.hp[i], 0)
                 case .gold: XCTAssertEqual(i, b.index(b.gold.x, b.gold.y)); XCTAssertFalse(b.rich[i])
+                case .shard: XCTAssertGreaterThan(b.hp[i], 0); XCTAssertGreaterThan(b.shardValue[i], 0)
                 case .wall, .empty: XCTAssertEqual(b.hp[i], 0)
                 }
             }
@@ -103,6 +105,20 @@ final class LevelTests: XCTestCase {
         }
         let g = b.index(b.gold.x, b.gold.y)
         XCTAssertEqual(b.hp[g], Economy.tierHP(4, level: 4) * Tuning.goldHPMultiplier, accuracy: 1e-9)
+    }
+
+    /// One level holds exactly the whole tree's price in shards, spread over its shard pixels.
+    func testShardsAddUpToTheWholeTree() {
+        for level in 1...10 {
+            let b = LevelGen.make(level: level)
+            let shards = b.kind.indices.filter { b.kind[$0] == .shard }
+            XCTAssertGreaterThanOrEqual(shards.count, Tuning.shardsPerLevel / 2, "level \(level)")
+            XCTAssertEqual(shards.reduce(0) { $0 + b.shardValue[$1] }, SkillNode.totalCost, "level \(level)")
+            for i in shards {
+                let p = Point(i % b.size, i / b.size)
+                XCTAssertGreaterThan(max(abs(p.x - b.gold.x), abs(p.y - b.gold.y)), 3)
+            }
+        }
     }
 
     func testFirstLevelIsGentle() {

@@ -73,8 +73,10 @@ sim() {
   local udid; udid=$(sim_udid)
   say "Building for simulator $SIM_NAME ($udid)"
   build_sim "$udid"
-  xcrun simctl boot "$udid" 2>/dev/null || true
+  boot_sim "$udid"
   open -a "Simulator" 2>/dev/null || true
+  # A booted Duo starts folded with the inner screen black; unfold it flat.
+  [[ "$SIM_TYPE" == *Duo* ]] && unfold "$udid"
   xcrun simctl install "$udid" build/sim/Build/Products/Debug-iphonesimulator/GoldenPixel.app
   xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" ${SCENE:+-GPScene "$SCENE"}
 }
@@ -135,14 +137,14 @@ shots() {
   fi
   say "Inner display ${inner:-default}, outer display ${outer:-none}"
   mkdir -p "$out/outer"
-  for scene in title start mid zoom upgrades late skills gold; do
+  for scene in menu start mid zoom zoomout sheet aim late tree gold howto settings; do
     say "Scene $scene"
     limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
     sleep 4
     limit 30 xcrun simctl io "$udid" screenshot ${inner:+--display=$inner} "$out/$scene.png"
     [[ -n "$outer" ]] && { limit 30 xcrun simctl io "$udid" screenshot --display="$outer" "$out/outer/$scene.png" || true; }
   done
-  for scene in start late gold; do
+  for scene in menu late gold; do
     say "Recording $scene"
     limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
     sleep 1

@@ -7,7 +7,9 @@ extension Game {
         let dt = min(max(0, dt), 1.0 / 20)
         time += dt
         ui.camera.update(dt)
-        if !ui.started { return }
+        ui.treeCamera.update(dt)
+        if ui.screen != .game { return }
+        if clearTimer == nil { progress.levelTime += dt }
 
         if let t = clearTimer {
             let left = t - dt
@@ -33,7 +35,6 @@ extension Game {
     // MARK: Balls
 
     func stepBalls(_ dt: Double) {
-        let ghostSpec = progress.ball(.ghost).spec
         for i in balls.indices {
             var b = balls[i]
             if b.kind == .ghost {
@@ -46,7 +47,7 @@ extension Game {
                     b.phaseTimer -= dt
                     if b.phaseTimer <= 0 {
                         b.phaseLeft = special(.ghost)
-                        b.phaseTimer = ghostSpec == "poltergeist" ? 2 : 4
+                        b.phaseTimer = has("poltergeist") ? 2 : 4
                     }
                 }
             }
@@ -91,7 +92,7 @@ extension Game {
                     let idx = board.index(cx, cy)
                     if idx != b.lastCell {
                         b.lastCell = idx
-                        let mult = progress.ball(.ghost).spec == "wraith" ? 3.0 : 1.0
+                        let mult = has("wraith") ? 3.0 : 1.0
                         _ = damageCell(idx, damage(.ghost) * mult)
                     }
                     continue
@@ -137,25 +138,27 @@ extension Game {
 
     /// A ball hit a block or the gold. Returns true if it broke.
     func hit(_ i: Int, by k: BallKind) -> Bool {
-        let p = progress.ball(k)
         var dmg = damage(k)
         var critChance = mods.crit
         if k == .basic { critChance += special(.basic) }
-        if p.spec == "marksman" { critChance += 0.25 }
+        if k == .sniper && has("marksman") { critChance += 0.25 }
         if rng.unit() < critChance { dmg *= mods.critDamage; events.append(.crit) }
         if k == .fast {
-            let chance = special(.fast) * (p.spec == "flurry" ? 2 : 1)
-            if rng.unit() < chance { dmg *= 2; if p.spec == "flurry" && rng.unit() < chance { dmg *= 1.5 } }
+            let flurry = has("flurry")
+            let chance = special(.fast) * (flurry ? 2 : 1)
+            if rng.unit() < chance { dmg *= 2; if flurry && rng.unit() < chance { dmg *= 1.5 } }
         }
         let x = i % board.size, y = i / board.size
         let broke = damageCell(i, dmg)
         switch k {
-        case .lightning: chain(from: x, y, damage: dmg * 0.5 * (p.spec == "overcharge" ? 2.5 : 1),
-                               count: Int(special(.lightning)) + (p.spec == "storm" ? 4 : 0), range: p.spec == "storm" ? 4.5 : 3)
+        case .lightning:
+            let storm = has("storm")
+            chain(from: x, y, damage: dmg * 0.5 * (has("overcharge") ? 2.5 : 1),
+                  count: Int(special(.lightning)) + (storm ? 4 : 0), range: storm ? 4.5 : 3)
         case .bomb:
-            let radius = special(.bomb) * (p.spec == "nuke" ? 1.6 : 1)
+            let radius = special(.bomb) * (has("nuke") ? 1.6 : 1)
             explode(Double(x) + 0.5, Double(y) + 0.5, radius: radius, damage: dmg * 0.6)
-            if p.spec == "cluster" {
+            if has("cluster") {
                 for _ in 0..<3 {
                     explode(Double(x) + 0.5 + rng.range(-2, 2), Double(y) + 0.5 + rng.range(-2, 2), radius: radius * 0.5, damage: dmg * 0.3)
                 }
@@ -186,7 +189,7 @@ extension Game {
         for yy in (y - r)...(y + r) {
             for xx in (x - r)...(x + r) where board.inside(xx, yy) && !(xx == x && yy == y) {
                 let k = board.kind[board.index(xx, yy)]
-                guard k == .block || k == .gold else { continue }
+                guard k.breakable else { continue }
                 let d2 = (xx - x) * (xx - x) + (yy - y) * (yy - y)
                 if Double(d2) <= range * range { targets.append((d2, board.index(xx, yy))) }
             }
@@ -219,7 +222,7 @@ extension Game {
         let range = min(24, Int(special(.sniper)))
         let cx = Int(x.rounded(.down)), cy = Int(y.rounded(.down))
         var target: Point?
-        if progress.ball(.sniper).spec == "seeker", board.kind[board.index(board.gold.x, board.gold.y)] == .gold {
+        if has("seeker"), board.kind[board.index(board.gold.x, board.gold.y)] == .gold {
             let dx = board.gold.x - cx, dy = board.gold.y - cy
             if dx * dx + dy * dy <= range * range { target = board.gold }
         }
@@ -228,7 +231,7 @@ extension Game {
                 for dy in -r...r {
                     for dx in -r...r where abs(dx) == r || abs(dy) == r {
                         let k = board.kindAt(cx + dx, cy + dy)
-                        if (k == .block || k == .gold) && board.inside(cx + dx, cy + dy) { target = Point(cx + dx, cy + dy); break ringSearch }
+                        if k.breakable && board.inside(cx + dx, cy + dy) { target = Point(cx + dx, cy + dy); break ringSearch }
                     }
                 }
             }

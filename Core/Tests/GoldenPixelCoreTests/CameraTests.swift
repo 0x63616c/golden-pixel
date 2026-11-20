@@ -2,31 +2,46 @@ import XCTest
 @testable import GoldenPixelCore
 
 final class CameraTests: XCTestCase {
-    let side = Tuning.boardCells * Tuning.cellPixels
-    func cam() -> Camera { Camera(boardW: side, boardH: side, viewW: side, viewH: side) }
+    /// A level-sized board seen through the Duo's board view.
+    let boardSide = 590, viewW = 325, viewH = 334
+    func cam() -> Camera { Camera(boardW: boardSide, boardH: boardSide, viewW: viewW, viewH: viewH) }
 
     func settle(_ c: inout Camera) { for _ in 0..<600 { c.update(1.0 / 60) } }
 
     func assertOnGrid(_ c: Camera, file: StaticString = #filePath, line: UInt = #line) {
         XCTAssertTrue(c.isAtRest, file: file, line: line)
-        XCTAssertEqual(c.zoom, c.zoom.rounded(), file: file, line: line)
+        XCTAssertTrue(Camera.boardLevels.contains(c.zoom), file: file, line: line)
         XCTAssertEqual(c.origin.x, c.origin.x.rounded(), accuracy: 1e-9, file: file, line: line)
         XCTAssertEqual(c.origin.y, c.origin.y.rounded(), accuracy: 1e-9, file: file, line: line)
     }
 
+    /// The view never shows past the board's edge, unless the whole board fits, when it is centred.
     func assertInside(_ c: Camera, file: StaticString = #filePath, line: UInt = #line) {
-        let o = c.origin
-        XCTAssertLessThanOrEqual(o.x, 1e-9, file: file, line: line)
-        XCTAssertLessThanOrEqual(o.y, 1e-9, file: file, line: line)
-        XCTAssertGreaterThanOrEqual(o.x + Double(side) * c.zoom, Double(side) - 1e-9, file: file, line: line)
-        XCTAssertGreaterThanOrEqual(o.y + Double(side) * c.zoom, Double(side) - 1e-9, file: file, line: line)
+        let o = c.origin, w = Double(boardSide) * c.zoom
+        if w <= Double(viewW) {
+            XCTAssertEqual(o.x, ((Double(viewW) - w) / 2).rounded(), accuracy: 1, file: file, line: line)
+        } else {
+            XCTAssertLessThanOrEqual(o.x, 1e-9, file: file, line: line)
+            XCTAssertGreaterThanOrEqual(o.x + w, Double(viewW) - 1e-9, file: file, line: line)
+        }
     }
 
-    func testStartsFitToScreenOnTheGrid() {
+    func testStartsAtZoomOneOnTheGrid() {
         let c = cam()
         XCTAssertEqual(c.zoom, 1)
-        XCTAssertEqual(c.origin.x, 0); XCTAssertEqual(c.origin.y, 0)
         assertOnGrid(c)
+    }
+
+    func testLookAtCentresThePoint() {
+        var c = cam()
+        c.look(at: 300, 280)
+        let v = c.toView(300, 280)
+        XCTAssertEqual(v.x, Double(viewW) / 2, accuracy: 1)
+        XCTAssertEqual(v.y, Double(viewH) / 2, accuracy: 1)
+        assertOnGrid(c)
+        c.look(at: 0, 0)
+        assertInside(c)
+        XCTAssertEqual(c.origin.x, 0); XCTAssertEqual(c.origin.y, 0)
     }
 
     func testViewAndBoardMappingsAreInverse() {
@@ -39,6 +54,7 @@ final class CameraTests: XCTestCase {
 
     func testPinchKeepsThePointUnderTheFingers() {
         var c = cam()
+        c.look(at: 295, 295)
         let before = c.toBoard(164, 164)
         c.pinch(factor: 1.6, at: 164, 164)
         let after = c.toBoard(164, 164)
@@ -46,11 +62,11 @@ final class CameraTests: XCTestCase {
         XCTAssertEqual(c.zoom, 1.6, accuracy: 1e-9)
     }
 
-    func testReleaseEasesToTheNearestWholeZoomOnTheGrid() {
-        for (factor, expected) in [(1.4, 1.0), (1.6, 2.0), (2.7, 3.0), (3.4, 3.0), (9.0, 4.0), (0.3, 1.0)] {
+    func testReleaseEasesToTheNearestLevelOnTheGrid() {
+        for (factor, expected) in [(1.3, 1.0), (1.6, 2.0), (2.7, 3.0), (3.4, 3.0), (9.0, 4.0), (0.6, 0.5), (0.8, 1.0), (0.1, 0.5)] {
             var c = cam()
+            c.look(at: 295, 295)
             c.pinch(factor: factor, at: 90, 200)
-            XCTAssertFalse(c.isAtRest || factor == 1)
             c.settle()
             settle(&c)
             XCTAssertEqual(c.zoom, expected, "factor \(factor)")
@@ -59,12 +75,23 @@ final class CameraTests: XCTestCase {
         }
     }
 
+    /// At 0.5 the board is an exact subsample: every view pixel maps to an even board pixel.
+    func testHalfZoomIsAnExactSubsample() {
+        var c = cam()
+        c.pinch(factor: 0.5, at: 160, 160)
+        c.settle(); settle(&c)
+        XCTAssertEqual(c.zoom, 0.5)
+        for vx in 0..<20 {
+            let b = c.toBoard(Double(vx), 0)
+            XCTAssertEqual(b.x, b.x.rounded(), accuracy: 1e-9)
+        }
+        c.pan(7, 3)
+        assertOnGrid(c)
+    }
+
     func testPanFollowsTheFingerAndIsClampedToTheBoard() {
         var c = cam()
-        c.pan(40, 40)
-        XCTAssertEqual(c.origin.x, 0, "at fit there is nowhere to pan")
-        c.toggle(at: 164, 164); settle(&c)
-        XCTAssertEqual(c.zoom, Camera.closeUp)
+        c.look(at: 295, 295)
         let o = c.origin
         c.pan(10, -6)
         XCTAssertEqual(c.origin.x, o.x + 10, accuracy: 1e-9)
@@ -73,26 +100,24 @@ final class CameraTests: XCTestCase {
         c.pan(10_000, 10_000); assertInside(c); assertOnGrid(c)
         XCTAssertEqual(c.origin.x, 0); XCTAssertEqual(c.origin.y, 0)
         c.pan(-10_000, -10_000); assertInside(c); assertOnGrid(c)
-        XCTAssertEqual(c.origin.x, Double(side) - Double(side) * c.zoom)
+        XCTAssertEqual(c.origin.x, Double(viewW) - Double(boardSide) * c.zoom)
     }
 
-    func testDoubleTapTogglesBetweenFitAndCloseUp() {
+    func testDoubleTapTogglesBetweenOneAndCloseUp() {
         var c = cam()
-        c.toggle(at: 60, 60)
+        c.look(at: 295, 295)
+        c.toggle(at: 160, 160)
         settle(&c)
         XCTAssertEqual(c.zoom, Camera.closeUp)
         assertOnGrid(c); assertInside(c)
-        // The tapped spot is now near the middle of the view (or as near as the edge allows).
-        let p = c.toView(60, 60)
-        XCTAssertLessThan(abs(p.x - 120), 60)
         c.toggle(at: 10, 10)
         settle(&c)
         XCTAssertEqual(c.zoom, 1)
-        XCTAssertEqual(c.origin.x, 0); XCTAssertEqual(c.origin.y, 0)
+        assertOnGrid(c)
     }
 
     func testOddViewSizesStillLandOnTheGrid() {
-        var c = Camera(boardW: side, boardH: side, viewW: 331, viewH: 317)
+        var c = Camera(boardW: 450, boardH: 450, viewW: 331, viewH: 317)
         c.pinch(factor: 2.9, at: 101, 33)
         c.settle(); settle(&c)
         assertOnGrid(c)
@@ -114,49 +139,32 @@ final class CameraTests: XCTestCase {
         return Point(g.ui.layout.board.x + Int(v.x), g.ui.layout.board.y + Int(v.y))
     }
 
-    func testDoubleTapOnOpenSpaceZoomsButOnABlockJustHits() {
+    func testDoubleTapAnywhereOnTheBoardZooms() {
         let (g, r) = game()
         let b = g.board
-        let open = canvasPoint(g, cell: b.spawn.x, b.spawn.y)
-        g.handle(.tap(open, time: 1.0))
-        g.handle(.tap(open, time: 1.2))
+        let block = b.kind.indices.first { b.kind[$0] == .block && b.revealed[$0] }!
+        let p = canvasPoint(g, cell: block % b.size, block / b.size)
+        let hp = b.hp[block]
+        g.handle(.tap(p, time: 1.0))
+        g.handle(.tap(p, time: 1.2))
         for _ in 0..<120 { g.update(1.0 / 60) }
         XCTAssertEqual(g.ui.camera.zoom, Camera.closeUp)
+        XCTAssertEqual(b.hp[block], hp, "taps never hit")
         r.render(g)
-
-        let block = b.kind.indices.first { b.kind[$0] == .block && b.revealed[$0] }!
-        let bp = canvasPoint(g, cell: block % b.size, block / b.size)
-        let hp = b.hp[block]
-        g.handle(.tap(bp, time: 5.0))
-        g.handle(.tap(bp, time: 5.1))
-        XCTAssertLessThan(b.hp[block], hp, "taps on a block always hit it")
-        XCTAssertEqual(g.ui.camera.zoom, Camera.closeUp, "and never toggle the zoom")
     }
 
-    func testDragOnOpenSpacePansAndDragOnBlocksChips() {
+    func testDragOnTheBoardAlwaysPans() {
         let (g, r) = game()
         let b = g.board
-        let open = canvasPoint(g, cell: b.spawn.x, b.spawn.y)
-        g.handle(.tap(open, time: 1)); g.handle(.tap(open, time: 1.1))
-        for _ in 0..<120 { g.update(1.0 / 60) }
-        r.render(g)
+        let block = b.kind.indices.first { b.kind[$0] == .block && b.revealed[$0] }!
+        let from = canvasPoint(g, cell: block % b.size, block / b.size)
         let o = g.ui.camera.origin
-        let from = canvasPoint(g, cell: b.spawn.x, b.spawn.y)
-        let money = g.progress.money
-        g.handle(.drag(from: from, to: Point(from.x + 6, from.y)))
+        let hp = b.hp[block]
+        g.handle(.drag(from: from, to: Point(from.x + 6, from.y - 4)))
         g.handle(.release(from))
         XCTAssertEqual(g.ui.camera.origin.x, min(0, o.x + 6), accuracy: 1e-9)
-        XCTAssertEqual(g.progress.money, money)
-
+        XCTAssertEqual(b.hp[block], hp, "a swipe never chips")
         r.render(g)
-        let block = b.kind.indices.first { b.kind[$0] == .block && b.revealed[$0] }!
-        let bp = canvasPoint(g, cell: block % b.size, block / b.size)
-        let before = g.ui.camera.origin
-        let hp = b.hp[block]
-        g.handle(.drag(from: bp, to: Point(bp.x + 1, bp.y)))
-        g.handle(.release(bp))
-        XCTAssertEqual(g.ui.camera.origin.x, before.x, "a swipe from a block chips; it doesn't pan")
-        XCTAssertLessThan(b.hp[block], hp)
     }
 
     func testASecondFingerCancelsTheTapAndPinches() {
@@ -178,13 +186,13 @@ final class CameraTests: XCTestCase {
     func testPinchZoomsTheBoardButNotTheUI() {
         let (g, r) = game()
         let panelBefore = g.ui.layout.panel
-        let cards = g.ui.hits.filter { if case .buyBall = $0.action { return true }; return false }.map(\.rect)
+        let rows = g.ui.hits.filter { if case .ballRow = $0.action { return true }; return false }.map(\.rect)
         g.handle(.pinch(center: Point(150, 150), factor: 2.2, dx: 0, dy: 0))
         g.handle(.pinchEnded)
         for _ in 0..<120 { g.update(1.0 / 60) }
         r.render(g)
         XCTAssertEqual(g.ui.camera.zoom, 2)
         XCTAssertEqual(g.ui.layout.panel, panelBefore)
-        XCTAssertEqual(g.ui.hits.filter { if case .buyBall = $0.action { return true }; return false }.map(\.rect), cards)
+        XCTAssertEqual(g.ui.hits.filter { if case .ballRow = $0.action { return true }; return false }.map(\.rect), rows)
     }
 }

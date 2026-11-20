@@ -10,14 +10,19 @@ public struct Progress: Codable, Equatable, Sendable {
     public var money: Double = 0
     public var level: Int = 1
     public var maxLevel: Int = 1
+    /// One per golden pixel broken, for good: each adds damage and money.
     public var stars: Int = 0
-    public var skillPoints: Int = 0
-    public var skillRanks: [String: Int] = [:]
+    /// Skill-tree currency, from shard pixels. Resets with the tree every level.
+    public var shards: Int = 0
+    public var skillRanks: [String: Int] = SkillNode.startingRanks
     public var balls: [String: BallProgress] = [BallKind.basic.rawValue: BallProgress(owned: 1)]
     public var runEarnings: Double = 0
     public var totalEarnings: Double = 0
     /// Smoothed money per second, for offline earnings.
     public var incomeRate: Double = 0
+    /// Seconds played on the current level, and the last level's clear time.
+    public var levelTime: Double = 0
+    public var lastClearTime: Double = 0
     public var settings = Settings()
 
     public init() {}
@@ -41,7 +46,7 @@ public struct BoardSave: Codable, Equatable, Sendable {
 }
 
 public struct SaveFile: Codable, Equatable, Sendable {
-    public static let currentVersion = 1
+    public static let currentVersion = 2
     public var version: Int
     public var progress: Progress
     public var board: BoardSave?
@@ -64,7 +69,9 @@ public enum SaveCodec {
     public static func decode(_ data: Data) -> SaveFile? {
         guard let probe = try? JSONDecoder().decode(VersionProbe.self, from: data) else { return nil }
         switch probe.version {
-        case 1: return try? JSONDecoder().decode(SaveFile.self, from: data)
+        // Version 1 (money-bought upgrades, skill points) doesn't map onto the shard economy;
+        // the loader keeps the old file aside and starts fresh.
+        case 2: return try? JSONDecoder().decode(SaveFile.self, from: data)
         default: return nil
         }
     }
@@ -78,8 +85,8 @@ public enum SaveCodec {
     public static func snapshot(_ b: Board, fresh: Board) -> BoardSave {
         var broken: [Int] = [], damaged: [Int: Double] = [:], revealed: [Int] = []
         for i in 0..<b.kind.count {
-            if (fresh.kind[i] == .block || fresh.kind[i] == .gold) && b.kind[i] == .empty { broken.append(i) }
-            else if b.kind[i] == .block || b.kind[i] == .gold, b.hp[i] < b.maxHP[i] { damaged[i] = b.hp[i] }
+            if fresh.kind[i].breakable && b.kind[i] == .empty { broken.append(i) }
+            else if b.kind[i].breakable, b.hp[i] < b.maxHP[i] { damaged[i] = b.hp[i] }
             if b.revealed[i] { revealed.append(i) }
         }
         return BoardSave(level: b.level, broken: broken, damaged: damaged, revealed: revealed)

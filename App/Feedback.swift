@@ -25,7 +25,7 @@ final class Haptics {
         case .explosion: heavy.impactOccurred(intensity: 0.5)
         case .goldSpotted: note.notificationOccurred(.success)
         case .goldBroken: heavy.impactOccurred(intensity: 1); note.notificationOccurred(.success)
-        case .prestige: heavy.impactOccurred(intensity: 1)
+        case .shardBroken: note.notificationOccurred(.success)
         default: break
         }
     }
@@ -70,8 +70,8 @@ final class Sound {
         case .denied: fire("deny", gap: 0.2)
         case .zap: fire("zap", gap: 0.06)
         case .explosion: fire("boom", gap: 0.12)
-        case .goldBroken, .prestige: fire("gold", gap: 0.5)
-        case .goldSpotted: fire("spot", gap: 0.5)
+        case .goldBroken: fire("gold", gap: 0.5)
+        case .goldSpotted, .shardBroken: fire("spot", gap: 0.3)
         default: break
         }
     }

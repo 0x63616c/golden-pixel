@@ -1,15 +1,15 @@
 import XCTest
 @testable import GoldenPixelCore
 
-/// Durability is colour alone: a block walks down crimson > pink > amber > lime > green >
-/// grey, one step per hit unit, and the hit after grey breaks it.
+/// Durability is brightness alone: a block is one blue hue that walks down from bright
+/// (tough) to faint (one hit left), one step per hit unit, and the hit after that breaks it.
 final class DurabilityTests: XCTestCase {
     func testFreshBlocksShowTheirTierColour() {
         for level in [1, 4, 9] {
             for tier in 0..<5 {
                 let step = Economy.ladderStep(hp: Economy.tierHP(tier, level: level), level: level)
                 XCTAssertEqual(step, tier + 1)
-                XCTAssertEqual(Palette.ladder[step], Palette.tiers[tier])
+                XCTAssertEqual(Palette.ladder[step], Palette.tier(tier))
             }
         }
     }
@@ -25,8 +25,8 @@ final class DurabilityTests: XCTestCase {
             _ = g.damageCell(i, unit)
             if b.kind[i] == .block { steps.append(Economy.ladderStep(hp: b.hp[i], level: b.level)) }
         }
-        XCTAssertEqual(steps, [5, 4, 3, 2, 1, 0], "crimson, pink, amber, lime, green, grey")
-        XCTAssertEqual(b.kind[i], .empty, "the hit after grey breaks it")
+        XCTAssertEqual(steps, [5, 4, 3, 2, 1, 0], "bright to faint")
+        XCTAssertEqual(b.kind[i], .empty, "the hit after the faintest step breaks it")
     }
 
     func testStrongerHitsSkipSteps() {
@@ -51,11 +51,14 @@ final class DurabilityTests: XCTestCase {
                 [(0, 1), (1, 0), (0, -1), (-1, 0)].allSatisfy { b.kindAt(x + $0.0, y + $0.1) != .empty }
         }!
         let r = Renderer()
-        let L = { g.ui.layout }
         let cp = Tuning.cellPixels
+        g.ui.camera.look(at: Double((i % b.size) * cp), Double((i / b.size) * cp))
         func cellColours() -> Set<Pixel> {
             var s = Set<Pixel>()
-            for y in 0..<cp { for x in 0..<cp { s.insert(r.canvas.get(L().board.x + (i % b.size) * cp + x, L().board.y + (i / b.size) * cp + y) & 0x00ff_ffff) } }
+            let L = g.ui.layout, o = g.ui.camera.origin
+            for y in 0..<cp { for x in 0..<cp {
+                s.insert(r.canvas.get(L.board.x + Int(o.x) + (i % b.size) * cp + x, L.board.y + Int(o.y) + (i / b.size) * cp + y).rgbOnly)
+            } }
             return s
         }
         _ = g.damageCell(i, Economy.hitUnit(level: b.level) * 2)
@@ -66,9 +69,14 @@ final class DurabilityTests: XCTestCase {
         XCTAssertEqual(cellColours(), [Palette.ladder[3] & 0x00ff_ffff], "then one flat colour: no cracks")
     }
 
-    func testWallsAreClearlyBrighterThanGreyBlocks() {
+    /// Blocks are one hue (blue, brightening with toughness); walls are a neutral dark grey
+    /// that never outshines a block, so nothing pale sits out in the dark.
+    func testBlocksAreOneBlueRampAndWallsAreDarkGrey() {
         func luma(_ p: Pixel) -> Double { 0.2126 * Double(p.red) + 0.7152 * Double(p.green) + 0.0722 * Double(p.blue) }
-        XCTAssertGreaterThan(luma(Palette.wall) - luma(Palette.ladder[0]), 120)
-        XCTAssertGreaterThan(luma(Palette.wallShade) - luma(Palette.ladderLight[0]), 25, "even a wall's shadow beats a grey block's highlight")
+        for (a, b) in zip(Palette.ladder, Palette.ladder.dropFirst()) { XCTAssertLessThan(luma(a), luma(b)) }
+        for p in Palette.ladder { XCTAssertGreaterThan(p.blue, p.red); XCTAssertGreaterThan(p.blue, p.green) }
+        let w = Palette.wall
+        XCTAssertEqual(Int(w.red), Int(w.green), accuracy: 4); XCTAssertEqual(Int(w.green), Int(w.blue), accuracy: 4)
+        XCTAssertLessThan(luma(w), luma(Palette.ladder[1]))
     }
 }

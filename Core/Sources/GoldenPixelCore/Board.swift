@@ -1,6 +1,12 @@
 /// The level grid: struct-of-arrays so the simulation and renderer can walk it quickly.
 
-public enum CellKind: UInt8, Codable, Sendable { case empty, wall, block, gold }
+public enum CellKind: UInt8, Codable, Sendable {
+    case empty, wall, block, gold
+    /// A glowing shard pixel: breaking it pays skill-tree shards.
+    case shard
+    /// Blocks, shards and the gold: anything a hit can damage.
+    public var breakable: Bool { self == .block || self == .gold || self == .shard }
+}
 
 /// SplitMix64: small, fast and deterministic on every platform.
 public struct RNG: Sendable {
@@ -24,6 +30,8 @@ public final class Board {
     public var kind: [CellKind]
     public var tier: [UInt8]
     public var rich: [Bool]
+    /// Shards paid by each shard pixel (0 elsewhere).
+    public var shardValue: [Int]
     public var hp: [Double]
     public var maxHP: [Double]
     public var revealed: [Bool]
@@ -44,6 +52,7 @@ public final class Board {
         kind = Array(repeating: .wall, count: n)
         tier = Array(repeating: 0, count: n)
         rich = Array(repeating: false, count: n)
+        shardValue = Array(repeating: 0, count: n)
         hp = Array(repeating: 0, count: n)
         maxHP = Array(repeating: 0, count: n)
         revealed = Array(repeating: false, count: n)
@@ -59,4 +68,7 @@ public final class Board {
     public func kindAt(_ x: Int, _ y: Int) -> CellKind { inside(x, y) ? kind[index(x, y)] : .wall }
 
     public var blocksLeft: Int { kind.reduce(0) { $0 + ($1 == .block ? 1 : 0) } }
+    public var shardsLeft: Int { kind.reduce(0) { $0 + ($1 == .shard ? 1 : 0) } }
+    /// Board size in art pixels.
+    public var pixelSize: Int { size * Tuning.cellPixels }
 }

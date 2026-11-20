@@ -44,8 +44,7 @@ final class FogTests: XCTestCase {
         let b = g.board
         let target = b.kind.indices.first { b.kind[$0] == .block && b.revealed[$0] && Fog.distanceToOpen(b, $0, limit: 3) == 3 }!
         let tx = target % b.size, ty = target / b.size
-        b.hp[target] = 0.001
-        g.tap(cellX: tx, cellY: ty)
+        g.damageCell(target, b.hp[target] + 1)
         XCTAssertEqual(b.kind[target], .empty)
         for dy in -3...3 { for dx in -3...3 where b.inside(tx + dx, ty + dy) {
             XCTAssertTrue(b.revealed[b.index(tx + dx, ty + dy)])
@@ -89,6 +88,24 @@ final class FogTests: XCTestCase {
         for _ in 0..<(60 * 60) { g.update(1.0 / 60) }
         let b = g.board
         XCTAssertFalse(b.kind.indices.filter { b.kind[$0] == .wall && b.revealed[$0] }.isEmpty)
+    }
+
+    func testShardsAreSensedOnlyWhenTheLightGetsClose() {
+        let b = LevelGen.make(level: 1)
+        let shards = b.kind.indices.filter { b.kind[$0] == .shard }
+        XCTAssertFalse(shards.isEmpty)
+        for i in shards {
+            let x = i % b.size, y = i / b.size
+            var near = false
+            for dy in -Tuning.shardSenseRadius...Tuning.shardSenseRadius {
+                for dx in -Tuning.shardSenseRadius...Tuning.shardSenseRadius where b.inside(x + dx, y + dy) && b.revealed[b.index(x + dx, y + dy)] {
+                    near = true
+                }
+            }
+            XCTAssertEqual(Fog.shardSensed(b, i), near && !b.revealed[i])
+        }
+        XCTAssertGreaterThanOrEqual(shards.filter { Fog.shardSensed(b, $0) || b.revealed[$0] }.count, 2, "you start out sensing a couple")
+        XCTAssertLessThan(shards.filter { Fog.shardSensed(b, $0) }.count, shards.count / 2, "but never the whole level")
     }
 
     func testGoldGlowsOnlyNearTheGold() {

@@ -1,20 +1,30 @@
 /// Immediate-mode UI on the art grid: the renderer records hit regions as it draws, and
 /// gestures resolve against the regions of the last frame.
 
-public enum Tab: Int, Sendable, CaseIterable { case balls, upgrades, skills, more }
+/// Which full screen is showing. The game only runs on `.game`.
+public enum Screen: Sendable, Equatable { case menu, howTo, settings, game }
 
 public enum Action: Equatable, Sendable {
-    case start
-    case tab(Tab)
-    case toggleCollapse
-    case buyBall(BallKind)
-    case upgrade(BallKind, Stat)
-    case specialize(BallKind, Int)
-    case skill(String)
-    case closeSkills
-    case prestige
+    // Menu
+    case play
+    case howTo
+    case settings
+    case backToMenu
     case setting(Int)
+    case resetProgress
+    // Game
+    case openMenu
+    case openSkills
+    case closeSkills
+    case selectSkill(String)
+    case buySkill(String)
+    /// Tap a ball row: its info sheet. Drag from it: aim and buy.
+    case ballRow(BallKind)
+    case buyBall(BallKind)
+    case closeSheet
+    /// Backgrounds: where drags pan and pinches zoom.
     case board
+    case tree
     case panel
     case none
 }
@@ -29,34 +39,76 @@ public struct Hit: Sendable {
 public struct Tooltip: Sendable {
     public var lines: [String]
     public var at: Point
+    /// Game time it disappears.
+    public var until: Double
+}
+
+/// A slingshot aim in progress: dragged from `from` to `to`; the ball flies the other way.
+public struct Aim: Sendable, Equatable {
+    public var kind: BallKind
+    public var from: Point
+    public var to: Point
+    /// Launch direction (opposite the drag), or nil while the pull is too short to count.
+    public var direction: (x: Double, y: Double)? {
+        let dx = Double(from.x - to.x), dy = Double(from.y - to.y)
+        let len = (dx * dx + dy * dy).squareRoot()
+        return len < Double(Aim.minPull) ? nil : (dx / len, dy / len)
+    }
+    public static let minPull = 10
+    public static func == (a: Aim, b: Aim) -> Bool { a.kind == b.kind && a.from == b.from && a.to == b.to }
 }
 
 public struct UIState: Sendable {
-    public var started = false
-    public var tab: Tab = .balls
-    public var collapsed = false
-    public var scroll = 0
-    public var maxScroll = 0
+    public var screen: Screen = .menu
+    /// Shorthand for "on the game screen" (tests and scenes).
+    public var started: Bool {
+        get { screen == .game }
+        set { screen = newValue ? .game : .menu }
+    }
     public var skillsOpen = false
-    public var skillPan = Point(0, 0)
+    /// The tree node whose card is showing.
+    public var selectedSkill: String?
+    /// The ball type whose info sheet is open.
+    public var sheet: BallKind?
+    public var aim: Aim?
     public var tooltip: Tooltip?
-    public var confirmPrestigeUntil = -1.0
+    /// Reset needs a second tap before this time.
+    public var confirmResetUntil = -1.0
     public var pressed: Action = .none
     public var pressedUntil = 0.0
     public var hits: [Hit] = []
-    public var layout = Layout.make(width: Tuning.canvasWidth, height: Tuning.canvasHeight, collapsed: false)
+    public var layout = Layout.make(width: Tuning.canvasWidth, height: Tuning.canvasHeight)
     /// Board zoom and pan. The UI itself never zooms.
-    public var camera = Camera(boardW: Tuning.boardCells * Tuning.cellPixels, boardH: Tuning.boardCells * Tuning.cellPixels,
-                               viewW: Tuning.boardCells * Tuning.cellPixels, viewH: Tuning.boardCells * Tuning.cellPixels)
-    var lastDragCell = -1
-    /// What a one-finger drag on the board does, decided where it starts.
+    public var camera: Camera
+    /// Skill-tree zoom and pan: the tree is a "board" of `SkillTree.size` art pixels.
+    public var treeCamera: Camera
+    /// What a one-finger drag does, decided where it starts.
     var dragMode: DragMode = .none
     var lastTap: (at: Point, time: Double)?
-    public init() {}
+
+    public init() {
+        let L = layout
+        camera = Camera(boardW: 330, boardH: 330, viewW: L.board.w, viewH: L.board.h)
+        treeCamera = Camera(boardW: SkillTree.size.w, boardH: SkillTree.size.h, viewW: L.width, viewH: L.height, levels: Camera.treeLevels)
+        // Open on the top of the tree: the ball branches.
+        treeCamera.look(at: Double(SkillTree.size.w) / 2, 0)
+    }
+}
+
+/// Where the skill-tree nodes sit, in tree art pixels at zoom 1.
+public enum SkillTree {
+    static let minX = SkillNode.all.map(\.x).min()!, maxX = SkillNode.all.map(\.x).max()!
+    static let minY = SkillNode.all.map(\.y).min()!, maxY = SkillNode.all.map(\.y).max()!
+    /// The tree's extent plus a margin of two units on every side (and room for the card).
+    /// 32 px of extra room at the top (under the header) and 80 at the bottom (under the card).
+    public static let size = (w: (maxX - minX + 4) * SkillNode.unit, h: (maxY - minY + 4) * SkillNode.unit + 112)
+    public static func position(_ s: SkillNode) -> (x: Double, y: Double) {
+        (Double((s.x - minX + 2) * SkillNode.unit), Double((s.y - minY + 2) * SkillNode.unit + 32))
+    }
 }
 
 /// Where the board and the panel go for a canvas size. Landscape puts the panel on the
-/// right; a tall canvas puts it underneath. The board is always the hero.
+/// right; a tall canvas puts it underneath. The board view fills the rest.
 public struct Layout: Equatable, Sendable {
     public var width: Int
     public var height: Int
@@ -64,25 +116,37 @@ public struct Layout: Equatable, Sendable {
     public var panel: Rect
     public var landscape: Bool
 
-    public static let railWidth = 17
+    public static let panelWidth = 150
+    public static let panelHeight = 200
 
-    public static func make(width w: Int, height h: Int, collapsed: Bool) -> Layout {
-        let side = Tuning.boardCells * Tuning.cellPixels
+    public static func make(width w: Int, height h: Int) -> Layout {
         if w >= h {
-            let panelW = collapsed ? railWidth : max(railWidth, w - max(h, side + 3))
-            let free = w - panelW
-            let board = Rect((free - side) / 2, (h - side) / 2, side, side)
-            return Layout(width: w, height: h, board: board, panel: Rect(w - panelW, 0, panelW, h), landscape: true)
+            let pw = min(panelWidth, w / 2)
+            return Layout(width: w, height: h, board: Rect(0, 0, w - pw, h), panel: Rect(w - pw, 0, pw, h), landscape: true)
         } else {
-            let panelH = collapsed ? railWidth : max(railWidth, h - max(w, side + 3))
-            let free = h - panelH
-            let board = Rect((w - side) / 2, (free - side) / 2, side, side)
-            return Layout(width: w, height: h, board: board, panel: Rect(0, h - panelH, w, panelH), landscape: false)
+            let ph = min(panelHeight, h / 2)
+            return Layout(width: w, height: h, board: Rect(0, 0, w, h - ph), panel: Rect(0, h - ph, w, ph), landscape: false)
         }
+    }
+
+    /// True when the point lies inside the screen's rounded outline (corner radius
+    /// `Tuning.cornerRadius`), i.e. not in a cut-off corner.
+    public func onScreen(_ x: Int, _ y: Int) -> Bool {
+        let r = Tuning.cornerRadius
+        guard x >= 0, y >= 0, x <= width, y <= height else { return false }
+        let cx = x < r ? r : (x > width - r ? width - r : x)
+        let cy = y < r ? r : (y > height - r ? height - r : y)
+        let dx = x - cx, dy = y - cy
+        return dx * dx + dy * dy <= r * r
+    }
+
+    /// True when the whole rectangle is clear of the rounded corners.
+    public func safe(_ rc: Rect) -> Bool {
+        onScreen(rc.x, rc.y) && onScreen(rc.maxX, rc.y) && onScreen(rc.x, rc.maxY) && onScreen(rc.maxX, rc.maxY)
     }
 }
 
-enum DragMode: Sendable { case none, chip, pan, scroll, skills }
+enum DragMode: Sendable, Equatable { case none, pan, tree, aim, ignore }
 
 public enum Gesture: Equatable, Sendable {
     case tap(Point, time: Double = 0)
@@ -177,12 +241,11 @@ extension Game {
         switch g {
         case .tap(let p, let time):
             ui.tooltip = nil
-            if !ui.started { ui.started = true; events.append(.tap); return }
             guard let h = hit(at: p) else { return }
-            // Double-tap on open space (not a block, which a tap always hits) toggles zoom.
-            if h.action == .board, !breakableShown(p) {
+            // Double-tap on the board toggles the zoom; a single tap says what's there.
+            if h.action == .board {
                 if let last = ui.lastTap, time - last.time < Game.doubleTapTime,
-                   abs(last.at.x - p.x) + abs(last.at.y - p.y) <= 8 {
+                   abs(last.at.x - p.x) + abs(last.at.y - p.y) <= 10 {
                     let v = viewPoint(p)
                     ui.camera.toggle(at: v.x, v.y)
                     ui.lastTap = nil
@@ -194,48 +257,54 @@ extension Game {
             }
             perform(h.action, at: p)
         case .longPress(let p):
-            guard ui.started, let h = hit(at: p) else { return }
-            if !h.info.isEmpty { ui.tooltip = Tooltip(lines: h.info, at: p) }
-            else if h.action == .board, let i = boardCell(p), board.revealed[i], board.kind[i] == .block {
-                ui.tooltip = Tooltip(lines: ["HP \(compact(board.hp[i].rounded(.up)))"], at: p)
-            }
+            guard let h = hit(at: p) else { return }
+            if !h.info.isEmpty { ui.tooltip = Tooltip(lines: h.info, at: p, until: self.time + 3) }
+            else if h.action == .board { showCellInfo(p) }
         case .drag(let from, let to):
-            guard ui.started else { return }
             if ui.dragMode == .none {
-                // Decide once, where the finger went down: a swipe that starts on a visible
-                // block chips blocks; one that starts on open space or fog pans the camera.
-                if ui.skillsOpen { ui.dragMode = .skills }
-                else if ui.layout.panel.contains(from) { ui.dragMode = .scroll }
-                else if ui.layout.board.contains(from) { ui.dragMode = breakableShown(from) ? .chip : .pan }
-                else { ui.dragMode = .scroll }
+                // Decided once, where the finger went down.
+                let h = hit(at: from)?.action ?? .none
+                switch h {
+                case .board: ui.dragMode = .pan
+                case .tree, .selectSkill: ui.dragMode = .tree
+                case .ballRow(let k) where mods.unlocked.contains(k) && ui.screen == .game && !ui.skillsOpen && ui.sheet == nil:
+                    ui.dragMode = .aim
+                    ui.aim = Aim(kind: k, from: from, to: from)
+                case .buyBall(let k) where mods.unlocked.contains(k):
+                    // Drag the sheet's BUY button to aim as well.
+                    ui.dragMode = .aim
+                    ui.sheet = nil
+                    ui.aim = Aim(kind: k, from: from, to: from)
+                default: ui.dragMode = .ignore
+                }
+                ui.tooltip = nil
             }
             switch ui.dragMode {
-            case .skills:
-                ui.skillPan = Point(ui.skillPan.x + to.x - from.x, ui.skillPan.y + to.y - from.y)
-                ui.skillPan.x = max(-120, min(120, ui.skillPan.x)); ui.skillPan.y = max(-90, min(90, ui.skillPan.y))
-            case .scroll:
-                ui.scroll = max(0, min(ui.maxScroll, ui.scroll + from.y - to.y))
-            case .pan:
-                ui.camera.pan(Double(to.x - from.x), Double(to.y - from.y))
-            case .chip:
-                if let i = boardCell(to), i != ui.lastDragCell {
-                    ui.lastDragCell = i
-                    tap(cellX: i % board.size, cellY: i / board.size)
-                }
-            case .none: break
+            case .pan: ui.camera.pan(Double(to.x - from.x), Double(to.y - from.y))
+            case .tree: ui.treeCamera.pan(Double(to.x - from.x), Double(to.y - from.y))
+            case .aim: ui.aim?.to = to
+            case .none, .ignore: break
             }
         case .release:
-            ui.tooltip = nil
-            ui.lastDragCell = -1
+            if ui.dragMode == .aim, let a = ui.aim, let d = a.direction {
+                buyBall(a.kind, direction: d)
+            }
+            ui.aim = nil
             ui.dragMode = .none
         case .pinch(let center, let factor, let dx, let dy):
-            guard ui.started, !ui.skillsOpen else { return }
             ui.tooltip = nil
-            let v = viewPoint(center)
-            ui.camera.pinch(factor: factor, at: v.x, v.y)
-            ui.camera.pan(Double(dx), Double(dy))
+            if ui.skillsOpen {
+                ui.treeCamera.pinch(factor: factor, at: Double(center.x) + 0.5, Double(center.y) + 0.5)
+                ui.treeCamera.pan(Double(dx), Double(dy))
+            } else if ui.screen == .game, ui.sheet == nil {
+                let v = viewPoint(center)
+                ui.camera.pinch(factor: factor, at: v.x, v.y)
+                ui.camera.pan(Double(dx), Double(dy))
+            }
         case .pinchEnded:
             ui.camera.settle()
+            ui.treeCamera.settle()
+            ui.aim = nil
             ui.dragMode = .none
         }
     }
@@ -245,12 +314,6 @@ extension Game {
     /// Canvas point → view-local point in the board's camera view.
     func viewPoint(_ p: Point) -> (x: Double, y: Double) {
         (Double(p.x - ui.layout.board.x) + 0.5, Double(p.y - ui.layout.board.y) + 0.5)
-    }
-
-    /// True when the point is over a revealed block or the revealed gold.
-    func breakableShown(_ p: Point) -> Bool {
-        guard let i = boardCell(p) else { return false }
-        return board.revealed[i] && (board.kind[i] == .block || board.kind[i] == .gold)
     }
 
     func hit(at p: Point) -> Hit? { ui.hits.last { $0.rect.contains(p) } }
@@ -265,26 +328,21 @@ extension Game {
         return board.inside(x, y) ? board.index(x, y) : nil
     }
 
+    func showCellInfo(_ p: Point) {
+        guard let i = boardCell(p), let lines = describe(cellX: i % board.size, cellY: i / board.size) else { return }
+        ui.tooltip = Tooltip(lines: lines, at: p, until: time + 2)
+    }
+
     public func perform(_ a: Action, at p: Point = Point(0, 0)) {
         ui.pressed = a
         ui.pressedUntil = time + 0.12
         switch a {
-        case .start: ui.started = true
-        case .tab(let t):
-            if t == .skills { ui.skillsOpen = true } else { ui.tab = t; ui.scroll = 0 }
+        case .play:
+            ui.screen = .game
             events.append(.tap)
-        case .toggleCollapse:
-            ui.collapsed.toggle()
-            events.append(.tap)
-        case .buyBall(let k): buyBall(k)
-        case .upgrade(let k, let s): upgrade(k, s)
-        case .specialize(let k, let i): specialize(k, i)
-        case .skill(let id): buySkill(id)
-        case .closeSkills: ui.skillsOpen = false; events.append(.tap)
-        case .prestige:
-            if time < ui.confirmPrestigeUntil { prestige(); ui.confirmPrestigeUntil = -1 }
-            else if prestigeStars > 0 { ui.confirmPrestigeUntil = time + 3; events.append(.tap) }
-            else { events.append(.denied) }
+        case .howTo: ui.screen = .howTo; events.append(.tap)
+        case .settings: ui.screen = .settings; ui.confirmResetUntil = -1; events.append(.tap)
+        case .backToMenu: ui.screen = .menu; events.append(.tap)
         case .setting(let i):
             switch i {
             case 0: progress.settings.sound.toggle()
@@ -292,9 +350,41 @@ extension Game {
             default: progress.settings.glow.toggle()
             }
             events.append(.tap)
-        case .board:
-            if let i = boardCell(p) { tap(cellX: i % board.size, cellY: i / board.size) }
-        case .panel, .none: break
+        case .resetProgress:
+            if time < ui.confirmResetUntil {
+                resetProgress()
+                ui.confirmResetUntil = -1
+                ui.screen = .menu
+            } else {
+                ui.confirmResetUntil = time + 3
+                events.append(.denied)
+            }
+        case .openMenu:
+            ui.screen = .menu
+            ui.sheet = nil; ui.skillsOpen = false
+            events.append(.tap)
+        case .openSkills:
+            ui.skillsOpen = true
+            ui.sheet = nil
+            events.append(.tap)
+        case .closeSkills:
+            ui.skillsOpen = false
+            events.append(.tap)
+        case .selectSkill(let id):
+            ui.selectedSkill = id
+            events.append(.tap)
+        case .buySkill(let id): buySkill(id)
+        case .ballRow(let k):
+            ui.sheet = k
+            events.append(.tap)
+        case .buyBall(let k):
+            if mods.unlocked.contains(k) { buyBall(k) }
+            else { ui.sheet = nil; ui.skillsOpen = true; ui.selectedSkill = "u-\(k.rawValue)"; events.append(.tap) }
+        case .closeSheet:
+            ui.sheet = nil
+            events.append(.tap)
+        case .board: showCellInfo(p)
+        case .tree, .panel, .none: break
         }
     }
 

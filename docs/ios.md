@@ -18,11 +18,13 @@ the `duo-screenshots` artifact.
 
 - One art pixel = **6 x 6 device pixels**. 2853 / 6 = 475, 2007 / 6 = 334, so the canvas is
   **475 x 334** art pixels (2850 x 2004 px, centred with 1.5 px to spare per side).
-- A cell is **10 x 10** art pixels; the board is **33 x 33** cells = 330 art pixels square, so it
-  fills the screen's height. The panel takes the remaining 141 x 334 on the right.
+- A cell is **10 x 10** art pixels. The board view is the left 325 x 334; levels are 45 to 67
+  cells across, so you pan around them. The panel takes the right 150 x 334.
+- The inner screen's corners are heavily rounded: UI stays `Tuning.cornerRadius` (28 art px)
+  clear of them.
 - Text is Pixel Operator 8 (7-pixel caps); HUD icons are 7 x 7 to match.
-- The board can zoom to 2x, 3x or 4x (12, 18, 24 device pixels per board art pixel). The UI
-  never zooms.
+- The board can zoom to 0.5x, 2x, 3x or 4x (3, 12, 18, 24 device pixels per board art pixel).
+  The UI never zooms.
 - Caveat: because the physical panel is smaller than the rendered image, the last step on real
   glass is iOS's own resample. Everything the app controls is exact (the grid check proves it
   on the rendered image and on simulator screenshots).
@@ -35,7 +37,7 @@ letterbox.
 ```sh
 brew install xcodegen just
 just ios-sim                 # iPhone Duo simulator ("GP Duo")
-SCENE=mid just ios-sim       # a staged scene (title, start, early, mid, zoom, upgrades, late, skills, gold, portrait)
+SCENE=mid just ios-sim       # a staged scene (see Scenes.names: menu, start, mid, tree, sheet, aim, zoomout, ...)
 just ios-device              # a plugged-in phone (Xcode signed in to team X9E4HG27NK)
 ```
 

@@ -45,7 +45,7 @@ final class GameHost {
     }
 
     func save() {
-        guard scene == nil, game.ui.started else { return }
+        guard scene == nil else { return }
         SaveStore.save(game.saveFile(now: Date().timeIntervalSince1970))
     }
 

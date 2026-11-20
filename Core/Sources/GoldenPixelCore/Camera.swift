@@ -1,12 +1,14 @@
-/// The board camera. `zoom` is canvas pixels per board art pixel, so at rest it is a whole
-/// number and the zoomed board stays on the same art grid as the UI (zoom 2 = every board art
-/// pixel drawn as a 2x2 block of canvas pixels = 12x12 device pixels on the Duo). A pinch may
-/// pass through fractional zooms; on release the camera eases into the nearest whole zoom and
-/// snaps its position so the board's origin lands on a whole canvas pixel. The UI never zooms.
+/// The board camera. `zoom` is canvas pixels per board art pixel. At rest it is one of
+/// `levels`: whole numbers (zoom 2 = every board art pixel drawn as a 2x2 block of canvas
+/// pixels = 12x12 device pixels on the Duo) or 0.5, an exact subsample (every other board
+/// pixel), so the board always stays on the UI's art grid. A pinch may pass through any zoom;
+/// on release the camera eases into the nearest level and snaps its position so the board's
+/// origin lands on a whole canvas pixel. The UI never zooms.
 public struct Camera: Equatable, Sendable {
-    public static let minZoom = 1.0
-    public static let maxZoom = 4.0
-    /// Where a double-tap on open space takes you.
+    /// The board's zoom levels. The skill tree uses its own (`Camera.treeLevels`).
+    public static let boardLevels: [Double] = [0.5, 1, 2, 3, 4]
+    public static let treeLevels: [Double] = [0.5, 1, 2]
+    /// Where a double-tap takes you from zoom 1 or less.
     public static let closeUp = 2.0
     /// How fast the settle eases (per second, exponential).
     public static let settleRate = 18.0
@@ -16,6 +18,10 @@ public struct Camera: Equatable, Sendable {
     public var boardH: Int
     public var viewW: Int
     public var viewH: Int
+    /// The zooms the camera may rest at, ascending.
+    public let levels: [Double]
+    public var minZoom: Double { levels.first! }
+    public var maxZoom: Double { levels.last! }
     public private(set) var zoom: Double = 1
     /// The board art-pixel position at the centre of the view.
     public private(set) var cx: Double
@@ -23,9 +29,11 @@ public struct Camera: Equatable, Sendable {
     /// Set while easing toward a whole zoom after a pinch or a double-tap.
     public private(set) var target: (zoom: Double, cx: Double, cy: Double)?
 
-    public init(boardW: Int, boardH: Int, viewW: Int, viewH: Int) {
+    public init(boardW: Int, boardH: Int, viewW: Int, viewH: Int, levels: [Double] = Camera.boardLevels) {
         self.boardW = boardW; self.boardH = boardH; self.viewW = viewW; self.viewH = viewH
+        self.levels = levels
         cx = Double(boardW) / 2; cy = Double(boardH) / 2
+        clamp(); snapToGrid()
     }
 
     public static func == (a: Camera, b: Camera) -> Bool {
@@ -33,7 +41,19 @@ public struct Camera: Equatable, Sendable {
             && (a.target == nil) == (b.target == nil)
     }
 
-    public var isAtRest: Bool { target == nil && zoom == zoom.rounded() }
+    public var isAtRest: Bool { target == nil && levels.contains(zoom) }
+
+    /// The resting zoom nearest to z (in log space, so 1.4 rounds to 1 and 1.5 to 2).
+    public func nearestLevel(_ z: Double) -> Double {
+        levels.min { abs(log($0) - log(z)) < abs(log($1) - log(z)) }!
+    }
+
+    /// Centres the view on board art pixel (x, y) straight away, keeping the zoom.
+    public mutating func look(at x: Double, _ y: Double) {
+        target = nil
+        cx = x; cy = y
+        clamp(); snapToGrid()
+    }
 
     /// Canvas offset (from the view's top-left) of board art pixel (0, 0).
     public var origin: (x: Double, y: Double) {
@@ -54,7 +74,7 @@ public struct Camera: Equatable, Sendable {
 
     /// Keeps the view inside the board; a board smaller than the view stays centred.
     mutating func clamp() {
-        zoom = min(Camera.maxZoom, max(Camera.minZoom, zoom))
+        zoom = min(maxZoom, max(minZoom, zoom))
         (cx, cy) = Camera.clamped(cx, cy, zoom: zoom, self)
     }
 
@@ -71,12 +91,12 @@ public struct Camera: Equatable, Sendable {
     public mutating func pinch(factor: Double, at vx: Double, _ vy: Double) {
         target = nil
         let anchor = toBoard(vx, vy)
-        zoom = min(Camera.maxZoom * 1.15, max(Camera.minZoom / 1.15, zoom * factor))
+        zoom = min(maxZoom * 1.15, max(minZoom / 1.15, zoom * factor))
         // Solve for the centre that keeps `anchor` under (vx, vy).
         cx = anchor.x - (vx - Double(viewW) / 2) / zoom
         cy = anchor.y - (vy - Double(viewH) / 2) / zoom
         let z = zoom
-        zoom = min(Camera.maxZoom, max(Camera.minZoom, z))
+        zoom = min(maxZoom, max(minZoom, z))
         (cx, cy) = Camera.clamped(cx, cy, zoom: zoom, self)
         zoom = z
     }
@@ -89,16 +109,16 @@ public struct Camera: Equatable, Sendable {
         snapToGrid()
     }
 
-    /// Fingers lifted: ease into the nearest whole zoom, anchored on the view centre.
+    /// Fingers lifted: ease into the nearest zoom level, anchored on the view centre.
     public mutating func settle() {
-        let z = min(Camera.maxZoom, max(Camera.minZoom, zoom.rounded()))
-        aim(zoom: z, cx: cx, cy: cy)
+        aim(zoom: nearestLevel(zoom), cx: cx, cy: cy)
     }
 
-    /// Double-tap: fit the board, or go close-up on the tapped view point.
+    /// Double-tap: from close up, back out to zoom 1 around the same spot; otherwise go
+    /// close-up on the tapped view point.
     public mutating func toggle(at vx: Double, _ vy: Double) {
-        if (target?.zoom ?? zoom) > Camera.minZoom + 0.01 {
-            aim(zoom: Camera.minZoom, cx: Double(boardW) / 2, cy: Double(boardH) / 2)
+        if (target?.zoom ?? zoom) > 1.01 {
+            aim(zoom: 1, cx: cx, cy: cy)
         } else {
             let p = toBoard(vx, vy)
             aim(zoom: Camera.closeUp, cx: p.x, cy: p.y)
@@ -123,7 +143,7 @@ public struct Camera: Equatable, Sendable {
     }
 
     mutating func snapToGrid() {
-        guard zoom == zoom.rounded() else { return }
+        guard levels.contains(zoom) else { return }
         (cx, cy) = Camera.gridCentre(cx, cy, zoom: zoom, viewW: viewW, viewH: viewH)
     }
 
