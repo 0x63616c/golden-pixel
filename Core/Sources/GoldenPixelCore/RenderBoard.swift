@@ -219,9 +219,11 @@ extension Renderer {
 
     // MARK: - Launch preview
 
-    /// Placing a ball: a ghost of the selected ball where the finger went down, with a few dots
-    /// in front of it on the side away from the finger (the way it will fly). With no balls yet, a
-    /// ghost blinks at the spawn with a short prompt.
+    /// Placing a ball: a ghost of the selected ball where the finger went down, inside a ring
+    /// wide enough to show around the finger that hides it. Once the finger pulls away the
+    /// ring fades out and four dots show in front of the ghost, on the side away from the
+    /// finger (the way it will fly). With no balls yet, a ghost blinks
+    /// at the spawn with a short prompt.
     func drawLaunchPreview(_ g: Game, _ L: Layout) {
         guard g.ui.sheet == nil, !g.ui.skillsOpen, !g.ui.paused, g.clearTimer == nil else { return }
         let c = canvas, cam = g.ui.camera
@@ -229,16 +231,21 @@ extension Renderer {
         let s = max(1, Int(cam.zoom.rounded(.down)))
         c.clip = L.board
         if let l = g.ui.launch {
+            let fx = Double(l.from.x) + 0.5, fy = Double(l.from.y) + 0.5
+            // The hold ring: it appears the moment the hold takes, around the finger, and
+            // dithers away once the finger pulls out to aim.
+            let cover = l.pulledAt.map { 1 - (g.time - $0) / Tuning.holdRingFade } ?? 1
+            c.ring(fx, fy, Double(Tuning.holdRingRadius), k.color.glowing(160), cover: cover)
             // A thin ring in the ball's colour marks the ball being placed apart from the rest.
-            c.ring(Double(l.from.x) + 0.5, Double(l.from.y) + 0.5, 2.5 * Double(s) + 3, Palette.dimmer(k.color).glowing(120))
+            c.ring(fx, fy, 2.5 * Double(s) + 3, Palette.dimmer(k.color).glowing(120))
             c.sprite(Sprites.ball(k), l.from.x - 2 * s, l.from.y - 2 * s, scale: s)
             if let d = l.direction {
+                // Four dots of one size: the way it will fly.
                 let len = (d.x * d.x + d.y * d.y).squareRoot()
-                for j in 0..<4 {
+                for j in 0..<Tuning.aimDots {
                     let r = 2.5 * Double(s) + 6 + Double(j * 4)
                     let x = l.from.x + Int((d.x / len * r).rounded()), y = l.from.y + Int((d.y / len * r).rounded())
-                    let big = j < 2
-                    c.fill(x - (big ? 1 : 0), y - (big ? 1 : 0), big ? 2 : 1, big ? 2 : 1, k.color.glowing(160))
+                    c.fill(x - 1, y - 1, 2, 2, k.color.glowing(160))
                 }
             }
             c.clip = nil

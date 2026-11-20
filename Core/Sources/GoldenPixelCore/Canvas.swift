@@ -107,8 +107,10 @@ public final class Canvas {
     }
 
     /// A 1-pixel ring of radius r around a point that may sit between pixels: every pixel
-    /// whose centre is within half a pixel of the circle. Symmetric about (cx, cy).
-    public func ring(_ cx: Double, _ cy: Double, _ r: Double, _ c: Pixel) {
+    /// whose centre is within half a pixel of the circle. Symmetric about (cx, cy). `cover`
+    /// below 1 dithers it away (Bayer), down to nothing at 0.
+    public func ring(_ cx: Double, _ cy: Double, _ r: Double, _ c: Pixel, cover: Double = 1) {
+        guard cover > 0 else { return }
         guard r >= 0.5 else { set(Int(cx.rounded(.down)), Int(cy.rounded(.down)), c); return }
         let x0 = Int((cx - r - 1).rounded(.down)), x1 = Int((cx + r + 1).rounded(.up))
         let y0 = Int((cy - r - 1).rounded(.down)), y1 = Int((cy + r + 1).rounded(.up))
@@ -116,7 +118,7 @@ public final class Canvas {
             for x in x0...x1 {
                 let dx = Double(x) + 0.5 - cx, dy = Double(y) + 0.5 - cy
                 let d = (dx * dx + dy * dy).squareRoot()
-                if abs(d - r) < 0.5 { set(x, y, c) }
+                if abs(d - r) < 0.5, Bayer.on(x, y, cover) { set(x, y, c) }
             }
         }
     }

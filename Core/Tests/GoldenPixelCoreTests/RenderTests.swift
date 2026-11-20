@@ -136,6 +136,59 @@ final class RenderTests: XCTestCase {
         XCTAssertEqual(px(centre.x - 6, centre.y), BallKind.basic.shade.rgbOnly)
     }
 
+    /// Placing a ball: a ring wider than a fingertip around the held spot (the finger hides
+    /// the ghost). Once you pull, the ring fades to nothing and four dots show in front of
+    /// the ghost, all the same size.
+    func testLaunchPreviewShowsAHoldRingThenFourEqualDots() {
+        let g = Scenes.make("mid")
+        g.ui.selected = .heavy
+        let L = g.ui.layout, r = Renderer()
+        let from = Point(L.board.x + L.board.w / 2, L.board.y + L.board.h / 2)
+        let ink = BallKind.heavy.color.glowing(160), R = Tuning.holdRingRadius
+        XCTAssertGreaterThan(R * 2, Tuning.minTouch * 2, "wider than a fingertip")
+
+        // Held, not pulled yet: the ring, and no dots.
+        g.ui.launch = LaunchDrag(from: from, to: from)
+        r.render(g)
+        for (dx, dy) in [(R, 0), (-R, 0), (0, R), (0, -R)] {
+            XCTAssertEqual(r.canvas.get(from.x + dx, from.y + dy), ink, "ring at \(dx),\(dy)")
+        }
+        let s = max(1, Int(g.ui.camera.zoom.rounded(.down)))
+        let dotX = { (j: Int) in from.x + Int((2.5 * Double(s) + 6 + Double(j * 4)).rounded()) }
+        XCTAssertNotEqual(r.canvas.get(dotX(0), from.y), ink, "no dots until the pull")
+
+        // Pulled left: it flies right, with four 2x2 dots on that side.
+        g.ui.launch = LaunchDrag(from: from, to: Point(from.x - 30, from.y), pulledAt: g.time - Tuning.holdRingFade)
+        r.render(g)
+        XCTAssertEqual(Tuning.aimDots, 4)
+        for j in 0..<Tuning.aimDots {
+            for (dx, dy) in [(-1, -1), (0, -1), (-1, 0), (0, 0)] {
+                XCTAssertEqual(r.canvas.get(dotX(j) + dx, from.y + dy), ink, "dot \(j)")
+            }
+            XCTAssertNotEqual(r.canvas.get(dotX(j) + 1, from.y), ink, "dot \(j) is 2 wide")
+            XCTAssertNotEqual(r.canvas.get(dotX(j), from.y + 1), ink, "dot \(j) is 2 tall")
+        }
+        XCTAssertNotEqual(r.canvas.get(dotX(Tuning.aimDots), from.y), ink, "and no fifth")
+        // The ring is gone by then; halfway through the fade it is partly dithered away.
+        let ringInk = { () -> Int in
+            var n = 0
+            for y in (from.y - R - 1)...(from.y + R + 1) { for x in (from.x - R - 1)...(from.x + R + 1) {
+                let d = hypot(Double(x - from.x), Double(y - from.y))
+                if abs(d - Double(R)) < 0.5, r.canvas.get(x, y) == ink { n += 1 }
+            } }
+            return n
+        }
+        XCTAssertEqual(ringInk(), 0, "the ring has faded to nothing")
+        g.ui.launch?.pulledAt = nil
+        r.render(g)
+        let full = ringInk()
+        XCTAssertGreaterThan(full, 150)
+        g.ui.launch?.pulledAt = g.time - Tuning.holdRingFade / 2
+        r.render(g)
+        XCTAssertGreaterThan(ringInk(), full / 4)
+        XCTAssertLessThan(ringInk(), full * 3 / 4, "half faded, as a dither")
+    }
+
     /// Big boards only draw what the camera sees, and a level starts with the spawn in view.
     func testLevelsStartLookingAtTheSpawn() {
         for level in [1, 4, 7] {

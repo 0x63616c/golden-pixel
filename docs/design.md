@@ -9,9 +9,10 @@ and pause buttons, and one row per unlocked ball type.
   cell is.
 - **Coins buy balls.** A level starts with no balls and coins for exactly one basic ball. The
   panel lists only unlocked types; tap one to select it (lit row, colour bar). Hold an open
-  spot on the board where you want the ball for a moment (a tick, and a ghost ball appears),
-  then pull back like a slingshot: it flies the opposite way to your pull, and a few dots in
-  front of the ghost show that way; let go to buy it. A plain tap on an open
+  spot on the board where you want the ball for a moment (a tick, and a ghost ball appears
+  inside a ring wider than your fingertip, so you see the hold take; it fades out as you
+  pull), then pull back like a slingshot: it flies the opposite way to your pull, and four dots of one size in front of
+  the ghost show that way; let go to buy it. A plain tap on an open
   spot uses the last direction. A quick one-finger drag always pans, so open levels stay easy
   to move around; two fingers pan and zoom. Tap the selected row again (or hold any row) for its info sheet. Coins read in
   full (1,800) below a million.

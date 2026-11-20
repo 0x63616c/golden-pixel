@@ -61,7 +61,7 @@ public enum Scenes {
             let L = g.ui.layout
             g.ui.selected = .heavy
             let from = Point(L.board.x + L.board.w / 2, L.board.y + L.board.h / 2)
-            g.ui.launch = LaunchDrag(from: from, to: Point(from.x + 30, from.y - 24))
+            g.ui.launch = LaunchDrag(from: from, to: Point(from.x + 30, from.y - 24), pulledAt: 0)
         case "pause": settle(g, 14); g.ui.paused = true
         case "restart": settle(g, 14); g.ui.paused = true; g.ui.confirmingRestart = true
         case "zoom":
@@ -120,7 +120,7 @@ public enum Scenes {
             let cp = Double(Tuning.cellPixels), lp = g.launchPoint(), L = g.ui.layout
             let v = g.ui.camera.toView(lp.x * cp, lp.y * cp)
             let from = Point(L.board.x + Int(v.x), L.board.y + Int(v.y))
-            g.ui.launch = LaunchDrag(from: from, to: Point(from.x - 30, from.y + 30))
+            g.ui.launch = LaunchDrag(from: from, to: Point(from.x - 30, from.y + 30), pulledAt: 0)
         default: settle(g, 0.6)
         }
         g.events.removeAll()

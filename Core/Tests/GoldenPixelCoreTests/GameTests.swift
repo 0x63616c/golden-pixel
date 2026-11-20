@@ -204,6 +204,7 @@ final class GameTests: XCTestCase {
         g.handle(.drag(from: from, to: Point(from.x + 3, from.y - 4)))
         g.handle(.drag(from: Point(from.x + 3, from.y - 4), to: to))
         XCTAssertEqual(g.ui.launch?.to, to, "the preview follows the finger")
+        XCTAssertEqual(g.ui.launch?.pulledAt, g.time, "the hold ring starts fading with the pull")
         XCTAssertTrue(g.balls.isEmpty, "nothing is bought until you let go")
         let camera = g.ui.camera
         g.handle(.release(to))

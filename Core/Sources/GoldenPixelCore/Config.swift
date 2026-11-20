@@ -224,6 +224,13 @@ public enum Tuning {
     public static let cornerRadius = 28
     /// The smallest thing you can press: 22 art pixels = 44 points.
     public static let minTouch = 22
+    /// The ring shown around a finger holding a spot to place a ball: 32 art pixels = 64
+    /// points, a little wider than a fingertip, so it shows around the finger that hides the ball.
+    public static let holdRingRadius = 32
+    /// Seconds the hold ring takes to dither away once the finger starts to pull.
+    public static let holdRingFade = 0.3
+    /// Dots in front of a ball being aimed, all one size.
+    public static let aimDots = 4
 
     /// Ball diameter is half a cell: a 5x5 sprite (odd, so it has a true centre pixel) on a
     /// 10x10 block.

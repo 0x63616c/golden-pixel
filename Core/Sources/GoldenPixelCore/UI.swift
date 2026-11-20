@@ -232,7 +232,10 @@ public struct Layout: Equatable, Sendable {
 public struct LaunchDrag: Equatable, Sendable {
     public var from: Point
     public var to: Point
-    public init(from: Point, to: Point) { self.from = from; self.to = to }
+    /// Game time when the finger first pulled away from the held spot: the hold ring fades
+    /// out from then. Nil while it is still resting there.
+    public var pulledAt: Double?
+    public init(from: Point, to: Point, pulledAt: Double? = nil) { self.from = from; self.to = to; self.pulledAt = pulledAt }
     /// The launch direction (canvas pixels, not normalised): away from the finger. Nil while
     /// the pull is too short to count.
     public var direction: (x: Double, y: Double)? {
@@ -392,7 +395,9 @@ extension Game {
             switch ui.dragMode {
             case .pan: ui.camera.pan(Double(to.x - from.x), Double(to.y - from.y))
             case .tree: ui.treeCamera.pan(Double(to.x - from.x), Double(to.y - from.y))
-            case .launch: ui.launch?.to = to
+            case .launch:
+                ui.launch?.to = to
+                if ui.launch?.pulledAt == nil { ui.launch?.pulledAt = time }
             case .scroll: ui.scroll = max(0, min(ui.scrollMax, ui.scroll - (to.y - from.y)))
             case .none, .ignore: break
             }
