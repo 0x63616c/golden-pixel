@@ -8,7 +8,9 @@ name: TestFlight
 on:
   push:
     branches: [main]
-    paths-ignore: ["docs/**", "site/**", "**.md"]
+    # Ignore the read-only ASC status report and this workflow file so a CI-only
+    # change does not upload a TestFlight build. App and source changes still upload.
+    paths-ignore: ["docs/**", "site/**", "**.md", ".github/workflows/asc-status.yml", ".github/workflows/testflight.yml", "tools/asc-status.py"]
   workflow_dispatch:
     inputs:
       changelog:

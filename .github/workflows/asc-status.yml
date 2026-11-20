@@ -1,0 +1,39 @@
+# Read-only App Store Connect status: TestFlight beta review, App Store review, and
+# missing listing metadata. Manual, owner-only. GET requests only; never submits.
+name: App Store Connect status
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  status:
+    if: github.repository == '0x63616c/golden-pixel' && github.ref == 'refs/heads/main' && github.actor == '0x63616c'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: testflight
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+      - name: Check secrets
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: |
+          missing=0
+          for n in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_CONTENT; do
+            [[ -n "${!n}" ]] || { echo "::error::Missing secret $n (docs/ios.md)"; missing=1; }
+          done
+          exit "$missing"
+      - name: Report status
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.ASC_KEY_CONTENT }}
+        run: |
+          umask 077
+          python3 tools/asc-status.py
