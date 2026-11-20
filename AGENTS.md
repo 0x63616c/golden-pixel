@@ -9,9 +9,9 @@ Golden Pixel is a native Swift iOS game. Read this before changing anything.
 | `Core/Sources/GoldenPixelCore` | The whole game: rules, levels, fog, economy, sim, UI layout, and the CPU rasteriser. Pure Swift, no Apple UI frameworks (a test enforces it), so it builds and tests on Linux. |
 | `Core/Sources/gp-render` | CLI that renders staged scenes and the app icon to PNG. |
 | `Core/Tests` | Unit tests: durability, economy, level generation, fog reveal, camera and gestures, game flow, renderer invariants, the grid check, architecture. |
-| `tools/` | `gridcheck.py` (screenshot grid check), `bake-font.py` (font baking), font licence. |
+| `tools/` | `gridcheck.py` (screenshot grid check), `compare.py` (side-by-side sheets of simulator screenshots), `bake-font.py` (font baking), font licence. |
 | `App/` | The iOS shell: SwiftUI app, `MTKView` presenter + shaders, touch mapping, save file, haptics, sound. Thin on purpose. |
-| `ios/` | XcodeGen `project.yml`, Info.plist, assets, `ios.sh` (sim, device, archive, screenshots). The `.xcodeproj` is generated, never committed. |
+| `ios/` | XcodeGen `project.yml`, Info.plist, assets, `ios.sh` (sim, device, archive, screenshots, device comparison). The `.xcodeproj` is generated, never committed. |
 | `fastlane/` | API-key lanes: `setup` (bundle ID, app record, TestFlight group), `beta`, `status`. |
 | `.github/workflows` | `ci.yml` (PR gate), `testflight.yml` (main → TestFlight), `asc-setup.yml`, `pr-conventions.yml`. |
 | `docs/` | Architecture, design, iOS and release notes. |
@@ -30,8 +30,13 @@ swift run -c release gp-render mid build/render --frames 60   # one scene, as a 
 python3 tools/gridcheck.py build/render/*.png     # grid check (needs Pillow; default --scale 6)
 just ios-sim                                  # Duo simulator; SCENE=mid just ios-sim for a staged scene
 just shots                                    # Duo simulator screenshots of staged scenes
+just compare                                  # the same scenes on the Duo, iPhone 18 Pro and Pro Max, side by side
 just hooks                                    # once per clone: enable .githooks/pre-commit
 ```
+
+`just compare` writes `build/compare/<sim>/<scene>.png` and one sheet per scene in
+`build/compare/sheets` (phones at their relative sizes, corners cut as on glass, safe area
+outlined in pink). Look at the sheets after any layout change; see `docs/ios.md`.
 
 Scenes are defined in `Core/Sources/GoldenPixelCore/Scenes.swift`. `just render` uses
 `--scale 3`, so grid-check its output with `--scale 3`. CI uses the default scale.

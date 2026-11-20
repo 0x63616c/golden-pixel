@@ -1,19 +1,39 @@
 #!/usr/bin/env bash
 # Build, install and launch the native iOS app. Used by the justfile and CI:
 #   ios/ios.sh project                 regenerate GoldenPixel.xcodeproj from project.yml
-#   ios/ios.sh sim                     build + run on the "GP Duo" simulator (iPhone Duo)
+#   ios/ios.sh sim [duo|iphone|max]    build + run on a simulator (default: the iPhone Duo)
 #   ios/ios.sh device [debug]          build (Release by default) + install + launch on a USB/Wi-Fi iPhone
 #   ios/ios.sh archive <build>         archive + export an App Store .ipa into ios/build/export
 #                                      (CI: signs with the App Store Connect API key in ASC_KEY_PATH)
-#   ios/ios.sh shots <out-dir>         simulator screenshots + a short recording of staged scenes
+#   ios/ios.sh shots <out-dir> [sim]   simulator screenshots + a short recording of staged scenes
+#   ios/ios.sh compare <out-dir> [sim...]   the same screenshots on every simulator (default: duo
+#                                      iphone max), one folder each, plus side-by-side sheets
+# Simulators: duo = iPhone Duo (the target), iphone = iPhone 18 Pro, max = iPhone 18 Pro Max.
 # Pick a specific phone with DEVICE=<name or UDID> (see `xcrun devicectl list devices`).
 set -euo pipefail
 
 IOS_DIR="$(cd "$(dirname "$0")" && pwd)"
+CALLER_DIR=$PWD
 cd "$IOS_DIR"
 BUNDLE_ID=co.worldwidewebb.goldenpixel
 SIM_NAME="GP Duo"
 SIM_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-Duo
+# The staged scenes every screenshot run captures (see Scenes.names in the core).
+SHOT_SCENES=(menu start mid zoom zoomout sheet launch pause late tree gold howto settings)
+
+# An output folder as the caller meant it: relative paths are relative to where they ran us.
+outdir() { [[ "$1" = /* ]] && echo "$1" || echo "$CALLER_DIR/$1"; }
+
+# Picks the simulator the following steps use, by short name.
+use_sim() {
+  local types=com.apple.CoreSimulator.SimDeviceType
+  case "$1" in
+    duo) SIM_NAME="GP Duo"; SIM_TYPE=$types.iPhone-Duo ;;
+    iphone) SIM_NAME="GP iPhone"; SIM_TYPE=$types.iPhone-18-Pro ;;
+    max) SIM_NAME="GP Max"; SIM_TYPE=$types.iPhone-18-Pro-Max ;;
+    *) die "Unknown simulator '$1' (duo, iphone or max)" ;;
+  esac
+}
 
 # Run a command with a time limit (macOS has no `timeout`).
 limit() { local secs=$1; shift; perl -e 'alarm shift; exec @ARGV' "$secs" "$@"; }
@@ -47,6 +67,14 @@ project() {
   xcodegen generate --quiet
 }
 
+# Short commit for the in-app build label (Info.plist GPCommit), "+" if tracked files have
+# uncommitted changes; "dev" outside a git checkout.
+commit() {
+  local sha; sha=$(git -C "$IOS_DIR" rev-parse --short=7 HEAD 2>/dev/null) || { echo dev; return; }
+  [[ -z $(git -C "$IOS_DIR" status --porcelain --untracked-files=no 2>/dev/null) ]] || sha+="+"
+  echo "$sha"
+}
+
 ensure_project() { [[ -d GoldenPixel.xcodeproj && GoldenPixel.xcodeproj -nt project.yml ]] || project; }
 
 sim_udid() {
@@ -66,10 +94,11 @@ build_sim() {
   local udid=$1
   xbuild -project GoldenPixel.xcodeproj -scheme GoldenPixel -configuration Debug -sdk iphonesimulator \
     -destination "platform=iOS Simulator,id=$udid" -derivedDataPath build/sim CODE_SIGNING_ALLOWED=NO \
-    -skipPackagePluginValidation build
+    -skipPackagePluginValidation GP_COMMIT="$(commit)" build
 }
 
 sim() {
+  use_sim "${1:-${SIM:-duo}}"
   local udid; udid=$(sim_udid)
   say "Building for simulator $SIM_NAME ($udid)"
   build_sim "$udid"
@@ -113,10 +142,40 @@ unfold() {
 }
 
 shots() {
-  local out=${1:-build/shots}
+  local out; out=$(outdir "${1:-build/shots}")
+  use_sim "${2:-${SIM:-duo}}"
+  capture "$out" record
+}
+
+# The same scenes on several simulators, one folder each, then tools/compare.py stacks them
+# into one sheet per scene (at 1 px per point, so the phones keep their relative sizes).
+compare() {
+  local out; out=$(outdir "${1:-build/compare}")
+  [[ $# -gt 0 ]] && shift
+  local sims=("$@") s
+  [[ ${#sims[@]} -gt 0 ]] || sims=(duo iphone max)
+  for s in "${sims[@]}"; do use_sim "$s"; done   # reject a bad name before the first build
+  for s in "${sims[@]}"; do
+    use_sim "$s"
+    capture "$out/$s"
+    # What the glass hides: the screen's outline (the mask as alpha) and the safe area the
+    # app saw (PixelView writes it for staged scenes). Both go next to the folder, not in it.
+    local udid; udid=$(sim_udid)
+    local display=""; [[ "$SIM_TYPE" == *Duo* ]] && display=3
+    limit 30 xcrun simctl io "$udid" screenshot --mask=alpha ${display:+--display=$display} "$out/$s.mask.png" || true
+    cp "$(xcrun simctl get_app_container "$udid" "$BUNDLE_ID" data)/Library/Application Support/golden-pixel/safe-area.json" \
+      "$out/$s.safe-area.json" 2>/dev/null || say "No safe-area.json from $SIM_NAME"
+  done
+  local py=(python3)
+  command -v uv >/dev/null && py=(uv run --quiet --with pillow python3)
+  "${py[@]}" ../tools/compare.py "$out" "${sims[@]}"
+}
+
+# Screenshots of every staged scene on the current simulator, into <out>; with a second
+# argument, short recordings too.
+capture() {
+  local out=$1 record=${2:-}
   mkdir -p "$out"
-  say "Device types with Duo in the name:"
-  xcrun simctl list devicetypes | grep -i duo || true
   local udid; udid=$(sim_udid)
   say "Building for $SIM_NAME ($udid)"
   build_sim "$udid"
@@ -124,27 +183,31 @@ shots() {
   boot_sim "$udid"
   say "Installing"
   xcrun simctl install "$udid" build/sim/Build/Products/Debug-iphonesimulator/GoldenPixel.app
-  # The device profile, so the report can quote the simulator's own screen numbers.
-  local profile
-  profile=$(find "$(xcode-select -p)/../Developer/Platforms/iPhoneOS.platform" /Library/Developer/CoreSimulator /Applications/Xcode*.app -path "*iPhone Duo*.simdevicetype*" -name profile.plist 2>/dev/null | head -1 || true)
-  [[ -n "$profile" ]] && plutil -convert json -o "$out/duo-profile.json" "$profile" || true
   # The Duo simulator has two displays; the inner (larger) one is the game's target.
-  local inner outer
-  # simctl's display ids for the Duo profile: 3 = LCD-1 inner 2007x2853, 1 = LCD cover 1398x2034.
-  if [[ "$SIM_TYPE" == *Duo* ]]; then inner=3; outer=1; fi
-  if [[ -n "$outer" ]]; then
+  local inner="" outer=""
+  if [[ "$SIM_TYPE" == *Duo* ]]; then
+    say "Device types with Duo in the name:"
+    xcrun simctl list devicetypes | grep -i duo || true
+    # The device profile, so the report can quote the simulator's own screen numbers.
+    local profile
+    profile=$(find "$(xcode-select -p)/../Developer/Platforms/iPhoneOS.platform" /Library/Developer/CoreSimulator /Applications/Xcode*.app -path "*iPhone Duo*.simdevicetype*" -name profile.plist 2>/dev/null | head -1 || true)
+    [[ -n "$profile" ]] && plutil -convert json -o "$out/duo-profile.json" "$profile" || true
+    # simctl's display ids for the Duo profile: 3 = LCD-1 inner 2007x2853, 1 = LCD cover 1398x2034.
+    inner=3; outer=1
     # A booted Duo starts folded with the inner screen black; unfold it flat.
     unfold "$udid"
+    mkdir -p "$out/outer"
   fi
   say "Inner display ${inner:-default}, outer display ${outer:-none}"
-  mkdir -p "$out/outer"
-  for scene in menu start mid zoom zoomout sheet aim late tree gold howto settings; do
+  local scene
+  for scene in "${SHOT_SCENES[@]}"; do
     say "Scene $scene"
     limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
     sleep 4
     limit 30 xcrun simctl io "$udid" screenshot ${inner:+--display=$inner} "$out/$scene.png"
     [[ -n "$outer" ]] && { limit 30 xcrun simctl io "$udid" screenshot --display="$outer" "$out/outer/$scene.png" || true; }
   done
+  [[ -n "$record" ]] || return 0
   for scene in menu late gold; do
     say "Recording $scene"
     limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
@@ -180,23 +243,24 @@ device() {
   [[ -n "$dev" ]] || die "No iPhone found. Plug it in, unlock it, tap Trust, and turn on Developer Mode."
   say "Building $config for device"
   xbuild -project GoldenPixel.xcodeproj -scheme GoldenPixel -configuration "$config" \
-    -destination "id=$dev" -derivedDataPath build/device -allowProvisioningUpdates build
+    -destination "id=$dev" -derivedDataPath build/device -allowProvisioningUpdates GP_COMMIT="$(commit)" build
   xcrun devicectl device install app --device "$dev" "build/device/Build/Products/$config-iphoneos/GoldenPixel.app"
   xcrun devicectl device process launch --device "$dev" --terminate-existing "$BUNDLE_ID" || true
 }
 
 archive() {
   local build=${1:?build number}
+  local sha; sha=$(commit)
   ensure_project
   local auth=()
   if [[ -n "${ASC_KEY_PATH:-}" ]]; then
     auth=(-authenticationKeyPath "$ASC_KEY_PATH" -authenticationKeyID "$ASC_KEY_ID" -authenticationKeyIssuerID "$ASC_ISSUER_ID")
   fi
-  say "Archiving build $build"
+  say "Archiving build $build ($sha)"
   rm -rf build/GoldenPixel.xcarchive build/export
   xbuild -project GoldenPixel.xcodeproj -scheme GoldenPixel -configuration Release \
     -destination "generic/platform=iOS" -archivePath build/GoldenPixel.xcarchive \
-    -allowProvisioningUpdates ${auth[@]+"${auth[@]}"} CURRENT_PROJECT_VERSION="$build" archive
+    -allowProvisioningUpdates ${auth[@]+"${auth[@]}"} CURRENT_PROJECT_VERSION="$build" GP_COMMIT="$sha" archive
   say "Exporting the App Store .ipa"
   xbuild -exportArchive -archivePath build/GoldenPixel.xcarchive -exportOptionsPlist ExportOptions.plist \
     -exportPath build/export -allowProvisioningUpdates ${auth[@]+"${auth[@]}"}
@@ -205,9 +269,10 @@ archive() {
 
 case "${1:-}" in
   project) project ;;
-  sim) sim ;;
+  sim) shift; sim "$@" ;;
   shots) shift; shots "$@" ;;
+  compare) shift; compare "$@" ;;
   device) shift; device "$@" ;;
   archive) shift; archive "$@" ;;
-  *) sed -n '2,10p' "$0"; exit 1 ;;
+  *) sed -n '2,13p' "$0"; exit 1 ;;
 esac

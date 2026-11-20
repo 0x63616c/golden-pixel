@@ -2,19 +2,20 @@
 /// blue blocks drifting in and out of the dark, a few balls bouncing through, and a gold pixel.
 extension Renderer {
     /// The animated pixel field behind the menu screens. Pure function of time.
-    /// Cells under and near `calm` (canvas pixels) are held to the deepest blues, a step paler
-    /// per cell further out, so the logo, buttons and cards sit on a quiet patch of the same
-    /// field rather than in a hole.
-    func drawMenuBackground(_ g: Game, calm: Rect? = nil) {
+    /// Cells under and near the `calm` rectangles (canvas pixels) are held to the deepest blues,
+    /// a step paler per cell further out, so the logo, buttons and cards sit on a quiet patch of
+    /// the same field rather than in a hole.
+    func drawMenuBackground(_ g: Game, calm: [Rect] = []) {
         let c = canvas, t = g.time, cp = Tuning.cellPixels
         let cols = c.width / cp + 1, rows = c.height / cp + 1
         let ox = (c.width - cols * cp) / 2, oy = (c.height - rows * cp) / 2
-        /// Whole cells between a cell and the calm rectangle (0 = touching or inside).
+        /// Whole cells between a cell and the nearest calm rectangle (0 = touching or inside).
         func distance(_ cx: Int, _ cy: Int) -> Int {
-            guard let k = calm else { return 99 }
             let x0 = ox + cx * cp, y0 = oy + cy * cp
-            let dx = max(0, k.x - (x0 + cp), x0 - k.maxX), dy = max(0, k.y - (y0 + cp), y0 - k.maxY)
-            return (max(dx, dy) + cp - 1) / cp
+            return calm.map { k in
+                let dx = max(0, k.x - (x0 + cp), x0 - k.maxX), dy = max(0, k.y - (y0 + cp), y0 - k.maxY)
+                return (max(dx, dy) + cp - 1) / cp
+            }.min() ?? 99
         }
         for cy in 0..<rows {
             for cx in 0..<cols {
@@ -136,8 +137,10 @@ extension Renderer {
         let stackH = logo.h + logoGap + heroH + gap + rowH
         let x0 = (c.width - bw) / 2
         var y = (c.height - stackH) / 2
-        drawMenuBackground(g, calm: Rect(x0 - 6, y - 6, bw + 12, stackH + 12))
+        let tag = buildTagRect(g.buildLabel, cx: c.width / 2, y: c.height - Renderer.buildTagBottom - PixelFont.capHeight)
+        drawMenuBackground(g, calm: [Rect(x0 - 6, y - 6, bw + 12, stackH + 12)] + (tag.map { [$0] } ?? []))
         hit(Rect(0, 0, c.width, c.height), .none)
+        if let tag { drawBuildTag(g.buildLabel, tag, keyline: true) }
 
         drawLogo(g, cx: c.width / 2, y: y)
         y += logo.h + logoGap
@@ -152,6 +155,31 @@ extension Renderer {
         button(g, Rect(x0 + bw - half, y, half, rowH), "SETTINGS", .settings, icon: Sprites.gear, tintIcon: true)
     }
 
+    // MARK: - Build tag
+
+    /// Gap between the menu's build tag and the bottom of the screen (bottom centre is clear of
+    /// the rounded corners).
+    static let buildTagBottom = 9
+
+    /// Where a build label centred on cx with its cap top at y would sit, or nil when empty.
+    func buildTagRect(_ label: String, cx: Int, y: Int) -> Rect? {
+        guard !label.isEmpty else { return nil }
+        let w = PixelFont.measure(label) - 1   // the last glyph's 1-px gap isn't ink
+        return Rect(cx - w / 2, y, w, PixelFont.capHeight)
+    }
+
+    /// The build label in small muted type. Over the moving menu field it gets a 1-px black
+    /// keyline, like the logo's, so drifting blocks never touch the letters.
+    func drawBuildTag(_ label: String, _ r: Rect, keyline: Bool = false) {
+        let c = canvas
+        if keyline {
+            for (dx, dy) in [(-1, -1), (0, -1), (1, -1), (-1, 0), (1, 0), (-1, 1), (0, 1), (1, 1)] {
+                c.text(label, r.x + dx, r.y + dy, Palette.black)
+            }
+        }
+        c.text(label, r.x, r.y, Palette.muted)
+    }
+
     // MARK: - Cards
 
     /// A centred card on the menu background: a header with a back button and the title, a
@@ -161,7 +189,7 @@ extension Renderer {
         let pad = 16, header = 8 + 27 + 9
         let h = min(c.height - 16, header + 1 + pad + contentH + pad)
         let card = Rect((c.width - w) / 2, (c.height - h) / 2, w, h)
-        drawMenuBackground(g, calm: card)
+        drawMenuBackground(g, calm: [card])
         hit(Rect(0, 0, c.width, c.height), .none)
         box(card, Palette.panel1, edge: Palette.panel3, notch: 2)
         hit(card, .none)
@@ -217,7 +245,9 @@ extension Renderer {
         let s = g.progress.settings
         let rows: [(Sprite, String, Bool)] = [(Sprites.sound, "SOUND", s.sound), (Sprites.haptic, "HAPTICS", s.haptics), (Sprites.glowIcon, "GLOW", s.glow)]
         let rowH = 31, rowGap = 5, section = 18, bh = 27
-        let contentH = rows.count * rowH + (rows.count - 1) * rowGap + section + bh + 9 + PixelFont.capHeight
+        let tagGap = 14
+        let tagH = g.buildLabel.isEmpty ? 0 : tagGap + PixelFont.capHeight
+        let contentH = rows.count * rowH + (rows.count - 1) * rowGap + section + bh + 9 + PixelFont.capHeight + tagH
         let r = menuCard(g, title: "SETTINGS", width: 300, contentH: contentH)
         var y = r.y
         for (j, (icon, name, on)) in rows.enumerated() {
@@ -244,6 +274,10 @@ extension Renderer {
         button(g, Rect(r.x, y, r.w, bh), confirming ? "TAP AGAIN TO WIPE EVERYTHING" : "RESET PROGRESS", .resetProgress,
                style: confirming ? .danger : .secondary, icon: Sprites.restart, tintIcon: true)
         centred("Wipes levels, stars and coins.", c.width / 2, y + bh + 9, Palette.muted)
+        // Which build this is, last and quietest, so a tester can match it to TestFlight.
+        if let tag = buildTagRect(g.buildLabel, cx: c.width / 2, y: y + bh + 9 + PixelFont.capHeight + tagGap) {
+            drawBuildTag(g.buildLabel, tag)
+        }
     }
 }
 

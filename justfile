@@ -20,17 +20,21 @@ icon:
 ios-project:
     ios/ios.sh project
 
-# Build and run on the iPhone Duo simulator (SCENE=mid just ios-sim for a staged scene)
-ios-sim:
-    ios/ios.sh sim
+# Build and run on a simulator: duo (default), iphone or max (SCENE=mid just ios-sim for a staged scene)
+ios-sim sim="duo":
+    ios/ios.sh sim {{sim}}
 
 # Build and install on a plugged-in iPhone
 ios-device *args:
     ios/ios.sh device {{args}}
 
-# Duo simulator screenshots + recordings of staged scenes
-shots out="build/shots":
-    ios/ios.sh shots {{out}}
+# Simulator screenshots + recordings of staged scenes: duo (default), iphone or max
+shots out="build/shots" sim="duo":
+    ios/ios.sh shots {{out}} {{sim}}
+
+# The same scenes on the Duo, iPhone 18 Pro and Pro Max, plus side-by-side sheets in <out>/sheets
+compare out="build/compare" *sims:
+    ios/ios.sh compare {{out}} {{sims}}
 
 # Upload a TestFlight build from this Mac (needs ASC_* in fastlane/.env); CI does this on main
 beta:

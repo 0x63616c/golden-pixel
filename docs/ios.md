@@ -41,6 +41,27 @@ SCENE=mid just ios-sim       # a staged scene (see Scenes.names: menu, start, mi
 just ios-device              # a plugged-in phone (Xcode signed in to team X9E4HG27NK)
 ```
 
+## Other phones: compare the layouts
+
+```sh
+just compare                         # Duo, iPhone 18 Pro and iPhone 18 Pro Max -> build/compare
+just compare build/compare iphone    # only some of them (duo, iphone, max)
+just ios-sim max                     # play on one of them (SCENE=mid for a staged scene)
+python3 tools/gridcheck.py --scale 3 build/compare/iphone/*.png   # the phones run at art scale 3 today
+```
+
+`just compare` screenshots every staged scene on each simulator (`build/compare/<sim>/`) and
+stacks them into one sheet per scene in `build/compare/sheets` (`all.png` has every scene).
+The sheets are drawn at 1 px per point, so the phones keep their relative sizes on screen.
+Each label gives the screenshot size, the art scale found in the image and the canvas that
+gives. The screen's rounded corners are cut as on glass (from the simulator's mask,
+`<sim>.mask.png`), and the pink outline is the safe area the app was given
+(`<sim>.safe-area.json`, written by `PixelView` for staged scenes): outside it sit the Dynamic
+Island and the home indicator. Needs Pillow; with `uv` installed it is fetched for the run.
+
+For a quick look without a simulator, render any canvas size from the core:
+`swift run -c release gp-render late build/phone --size 437x201` (an iPhone 18 Pro at art scale 6).
+
 ## Release
 
 - App: **Golden Pixel**, bundle ID `co.worldwidewebb.goldenpixel`, team `X9E4HG27NK`, SKU `golden-pixel-001`.

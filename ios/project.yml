@@ -30,6 +30,9 @@ targets:
     sources:
       - path: ../App
       - path: Assets.xcassets
+      # Privacy manifest (no data collected; required-reason API declarations). See docs/release.md.
+      - path: PrivacyInfo.xcprivacy
+        buildPhase: resources
       - path: Info.plist
         buildPhase: none
     dependencies:
@@ -43,6 +46,9 @@ targets:
         GENERATE_INFOPLIST_FILE: NO
         MARKETING_VERSION: "1.0.0"
         CURRENT_PROJECT_VERSION: "1"
+        # Short commit shown in the app next to the build number (Info.plist GPCommit).
+        # ios/ios.sh passes the real one; a plain Xcode build shows "dev".
+        GP_COMMIT: dev
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         # iPhone only: built for the iPhone Duo's inner display, letterboxed elsewhere.
         TARGETED_DEVICE_FAMILY: "1"

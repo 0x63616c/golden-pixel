@@ -54,4 +54,35 @@ final class UISafetyTests: XCTestCase {
             } }
         }
     }
+    /// The build label shows on the menu and the settings card, in muted type, clear of the
+    /// rounded corners and of every button.
+    func testBuildLabelIsDrawnClearOfCornersAndButtons() {
+        for name in ["menu", "settings"] {
+            let a = Scenes.make(name), b = Scenes.make(name)
+            XCTAssertFalse(a.buildLabel.isEmpty, "\(name): staged scenes carry a sample label")
+            // Same length, different glyphs: the layout is identical, so only the label differs.
+            b.buildLabel = "9.9.9 (999999999999) zzzzzzz"
+            XCTAssertEqual(PixelFont.measure(a.buildLabel), PixelFont.measure(b.buildLabel))
+            let ra = Renderer(), rb = Renderer()
+            ra.render(a); rb.render(b)
+            let L = a.ui.layout
+            var x0 = Int.max, y0 = Int.max, x1 = Int.min, y1 = Int.min, muted = 0
+            for y in 0..<L.height { for x in 0..<L.width where ra.canvas.get(x, y) != rb.canvas.get(x, y) {
+                x0 = min(x0, x); y0 = min(y0, y); x1 = max(x1, x); y1 = max(y1, y)
+                if ra.canvas.get(x, y).rgbOnly == Palette.muted.rgbOnly { muted += 1 }
+            } }
+            XCTAssertGreaterThan(muted, 20, "\(name): the label is drawn in muted ink")
+            guard x0 <= x1 else { continue }
+            let tag = Rect(x0, y0, x1 - x0 + 1, y1 - y0 + 1)
+            XCTAssertLessThanOrEqual(tag.h, PixelFont.capHeight + 2, "\(name): one small line")
+            let r = Tuning.cornerRadius
+            XCTAssertTrue(L.safe(tag), "\(name): label at \(tag) is in a rounded corner")
+            XCTAssertTrue(tag.x >= r && tag.maxX <= L.width - r || tag.y >= r && tag.maxY <= L.height - r,
+                          "\(name): label at \(tag) is within the corner radius")
+            for h in a.ui.hits where !isBackground(h.action) {
+                let overlap = tag.x < h.rect.maxX && h.rect.x < tag.maxX && tag.y < h.rect.maxY && h.rect.y < tag.maxY
+                XCTAssertFalse(overlap, "\(name): label at \(tag) overlaps \(h.action) at \(h.rect)")
+            }
+        }
+    }
 }

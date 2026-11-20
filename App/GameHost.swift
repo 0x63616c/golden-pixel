@@ -23,6 +23,18 @@ final class GameHost {
             game = Game(seed: UInt64(Date().timeIntervalSince1970))
             if let file = SaveStore.load() { game.load(file, now: Date().timeIntervalSince1970) }
         }
+        game.buildLabel = GameHost.buildLabel
+    }
+
+    /// "1.0.0 (202611201804) a1b2c3d": the version and build number exactly as TestFlight
+    /// lists them, then the commit ios/ios.sh stamped in (GPCommit; "dev" from a plain Xcode
+    /// build, a trailing "+" when built with uncommitted changes).
+    static var buildLabel: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        let version = info["CFBundleShortVersionString"] as? String ?? "?"
+        let build = info["CFBundleVersion"] as? String ?? "?"
+        let commit = (info["GPCommit"] as? String ?? "").trimmingCharacters(in: .whitespaces)
+        return "\(version) (\(build))" + (commit.isEmpty ? "" : " \(commit)")
     }
 
     func frame(dt: Double, now: Double) {

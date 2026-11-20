@@ -4,6 +4,9 @@ public enum Scenes {
     public static let names = ["menu", "howto", "settings", "start", "early", "mid", "late", "tree", "sheet", "launch", "pause", "restart",
                                "gold", "zoom", "zoomout", "portrait"]
 
+    /// What a TestFlight build shows in place of the app's real build label.
+    public static let sampleBuildLabel = "1.0.0 (202611201445) a1b2c3d"
+
     public static func make(_ name: String) -> Game {
         var p = Progress()
         switch name {
@@ -81,6 +84,7 @@ public enum Scenes {
         default: settle(g, 0.6)
         }
         g.events.removeAll()
+        g.buildLabel = sampleBuildLabel
         return g
     }
 

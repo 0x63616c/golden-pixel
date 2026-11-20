@@ -68,6 +68,18 @@ final class PixelMetalView: MTKView, MTKViewDelegate {
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
+    /// Staged scenes only: notes the safe area (in points) next to the save file, so the
+    /// screenshot tools (`ios/ios.sh compare`) can draw what the island and the home
+    /// indicator cover on each phone.
+    override func safeAreaInsetsDidChange() {
+        super.safeAreaInsetsDidChange()
+        guard host.scene != nil else { return }
+        let i = window?.safeAreaInsets ?? safeAreaInsets
+        let json = "{\"top\": \(i.top), \"left\": \(i.left), \"bottom\": \(i.bottom), \"right\": \(i.right)}\n"
+        try? json.write(to: SaveStore.url.deletingLastPathComponent().appendingPathComponent("safe-area.json"),
+                        atomically: true, encoding: .utf8)
+    }
+
     func draw(in view: MTKView) {
         let now = CACurrentMediaTime()
         let dt = now - lastTime

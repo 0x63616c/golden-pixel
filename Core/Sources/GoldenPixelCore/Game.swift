@@ -81,6 +81,10 @@ public final class Game {
     var goldSeen = false
     /// The direction the last ball was aimed (a unit vector); new balls default to it.
     public var lastAim: (x: Double, y: Double) = (0, -1)
+    /// Which build this is (e.g. "1.0.0 (202611201445) a1b2c3d"), set by the app shell from its
+    /// Info.plist so a tester can tell at a glance which TestFlight build is on the phone. Shown
+    /// faintly on the main menu and at the foot of the settings card; empty draws nothing.
+    public var buildLabel = ""
 
     public init(progress: Progress = Progress(), seed: UInt64 = 1) {
         self.progress = progress
