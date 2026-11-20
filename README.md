@@ -16,4 +16,4 @@ just ios-sim     # run on the iPhone Duo simulator
 ```
 
 Docs: [architecture](docs/architecture.md) · [design](docs/design.md) · [iOS + release](docs/ios.md) ·
-[contributing](CONTRIBUTING.md) · [agents](AGENTS.md)
+[contributing](CONTRIBUTING.md) · [agents](CLAUDE.md)
