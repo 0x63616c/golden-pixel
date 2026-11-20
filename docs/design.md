@@ -71,3 +71,5 @@ cards (details on long-press), and adds pinch zoom for close looks at the balls 
 
 - Font: Pixel Operator 8 by Jayvee Enaguas (HarvettFox96), CC0 1.0
   (tools/fonts/PixelOperator-LICENSE.txt). Baked with tools/bake-font.py.
+- Music: eleven CC0 tracks, listed with their artists and sources in docs/music.md. Baked with
+  tools/bake-music.py.

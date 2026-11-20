@@ -473,7 +473,8 @@ extension Game {
         case .setting(let i):
             switch i {
             case 0: progress.settings.sound.toggle()
-            case 1: progress.settings.haptics.toggle()
+            case 1: progress.settings.music.toggle()
+            case 2: progress.settings.haptics.toggle()
             default: progress.settings.glow.toggle()
             }
             events.append(.tap)

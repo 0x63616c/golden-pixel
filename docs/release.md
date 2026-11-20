@@ -102,7 +102,7 @@ and "No ads. No in-app purchases. No accounts. No tracking." Every claim must ma
 | App Privacy: data collected? | **No** ("Data Not Collected") | No network code, no analytics, ads or SDKs; the save is `Application Support/golden-pixel/save.json` on device (`App/GameHost.swift`). `tools/appstore.py check` greps for APIs that would change this. |
 | Tracking / IDFA | No | No AdSupport or AppTrackingTransparency; `NSPrivacyTracking = false`. |
 | Export compliance | No non-exempt encryption | `ITSAppUsesNonExemptEncryption = false`; the app makes no network calls. |
-| Content rights: third-party content? | **Yes, with rights** | The Pixel Operator 8 font is CC0 (`tools/fonts/PixelOperator-LICENSE.txt`). Set in the `release` lane. |
+| Content rights: third-party content? | **Yes, with rights** | The Pixel Operator 8 font is CC0 (`tools/fonts/PixelOperator-LICENSE.txt`), and so is every music track (`docs/music.md`). Set in the `release` lane. |
 | Age rating | Every content question None/No; no ads, UGC, chat, web access, gambling, contests, loot boxes or parental controls | Result: 4+. |
 | Made for Kids | No | General-audience game. |
 | Sign-in for review | Not needed | No accounts. |

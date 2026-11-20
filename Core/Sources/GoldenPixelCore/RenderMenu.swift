@@ -303,7 +303,8 @@ extension Renderer {
     func drawSettings(_ g: Game) {
         let c = canvas
         let s = g.progress.settings
-        let rows: [(Sprite, String, Bool)] = [(Sprites.sound, "SOUND", s.sound), (Sprites.haptic, "HAPTICS", s.haptics), (Sprites.glowIcon, "GLOW", s.glow)]
+        let rows: [(Sprite, String, Bool)] = [(Sprites.sound, "SOUND", s.sound), (Sprites.music, "MUSIC", s.music), (Sprites.haptic, "HAPTICS", s.haptics),
+                                                (Sprites.glowIcon, "GLOW", s.glow)]
         // Row and button heights and the gaps, as designed and tight: tight when the card
         // would not fit the screen otherwise.
         let tagged = !g.buildLabel.isEmpty

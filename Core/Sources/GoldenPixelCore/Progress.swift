@@ -1,9 +1,22 @@
 /// Everything that persists between sessions. Saved as versioned JSON (`SaveCodec`).
 public struct Settings: Codable, Equatable, Sendable {
     public var sound = true
+    /// Background music. The core only says what should play (`Game.musicCue`).
+    public var music = true
     public var haptics = true
     public var glow = false
     public init() {}
+
+    /// A setting newer than the save takes its default, so adding one never costs a player
+    /// their progress.
+    public init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        let d = Settings()
+        sound = try c.decodeIfPresent(Bool.self, forKey: .sound) ?? d.sound
+        music = try c.decodeIfPresent(Bool.self, forKey: .music) ?? d.music
+        haptics = try c.decodeIfPresent(Bool.self, forKey: .haptics) ?? d.haptics
+        glow = try c.decodeIfPresent(Bool.self, forKey: .glow) ?? d.glow
+    }
 }
 
 public struct Progress: Codable, Equatable, Sendable {

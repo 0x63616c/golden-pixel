@@ -73,6 +73,7 @@ public enum Sprites {
     public static let statSpecial = Sprite(["...#...", "...#...", "..###..", "#######", "..###..", "...#...", "...#..."], ["#": Palette.text])
 
     public static let sound = Sprite(["...#...", "..##.#.", "####..#", "####..#", "####..#", "..##.#.", "...#..."], ["#": Palette.text])
+    public static let music = Sprite(["..#####", "..#####", "..#...#", "..#...#", ".##..##", "###.###", ".#...#."], ["#": Palette.text])
     public static let haptic = Sprite(["#.###.#", "#.#.#.#", "..#.#..", "..#.#..", "..#.#..", "#.#.#.#", "#.###.#"], ["#": Palette.text])
     public static let glowIcon = Sprite(["#..#..#", ".#...#.", "..###..", "#.###.#", "..###..", ".#...#.", "#..#..#"], ["#": Palette.text])
 

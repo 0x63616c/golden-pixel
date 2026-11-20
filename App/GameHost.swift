@@ -2,15 +2,21 @@ import Foundation
 import GoldenPixelCore
 import QuartzCore
 
-/// Owns the game, its save file and the platform feedback (haptics, sound).
+/// Owns the game, its save file and the platform feedback (haptics, sound, music).
 @MainActor
 final class GameHost {
     let game: Game
     let renderer = Renderer()
     var tracker = PointerTracker()
-    var paused = false
+    var paused = false {
+        didSet {
+            guard paused != oldValue else { return }
+            if paused { music.suspend() } else { music.resume() }
+        }
+    }
     let haptics = Haptics()
     let sound = Sound()
+    let music = Music()
     /// Staged scene for screenshots (`-GPScene mid`); never saved.
     let scene: String?
     private var lastSave = CACurrentMediaTime()
@@ -43,6 +49,8 @@ final class GameHost {
         for g in tracker.tick(at: now) { game.handle(g) }
         game.update(dt)
         drainEvents()
+        // Staged scenes are for screenshots: they stay quiet.
+        music.update(scene == nil ? game.musicCue : .off, now: now)
         if scene == nil, now - lastSave > 10 { save(); lastSave = now }
     }
 
