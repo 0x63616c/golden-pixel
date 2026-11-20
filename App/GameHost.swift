@@ -19,10 +19,14 @@ final class GameHost {
     let music = Music()
     /// Staged scene for screenshots (`-GPScene mid`); never saved.
     let scene: String?
+    /// No music and no sound effects: staged scenes, and `-GPMute YES`, which ios/ios.sh passes
+    /// on every simulator launch (simulators play through the Mac's speakers).
+    let muted: Bool
     private var lastSave = CACurrentMediaTime()
 
     init() {
         scene = UserDefaults.standard.string(forKey: "GPScene")
+        muted = scene != nil || UserDefaults.standard.bool(forKey: "GPMute")
         if let s = scene, Scenes.names.contains(s) {
             game = Scenes.make(s)
         } else {
@@ -49,8 +53,7 @@ final class GameHost {
         for g in tracker.tick(at: now) { game.handle(g) }
         game.update(dt)
         drainEvents()
-        // Staged scenes are for screenshots: they stay quiet.
-        music.update(scene == nil ? game.musicCue : .off, now: now)
+        music.update(muted ? .off : game.musicCue, now: now)
         if scene == nil, now - lastSave > 10 { save(); lastSave = now }
     }
 
@@ -74,7 +77,7 @@ final class GameHost {
         let s = game.progress.settings
         for e in game.events {
             if s.haptics { haptics.play(e) }
-            if s.sound { sound.play(e) }
+            if s.sound, !muted { sound.play(e) }
         }
         game.events.removeAll(keepingCapacity: true)
     }

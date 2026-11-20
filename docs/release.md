@@ -33,10 +33,11 @@ the skill asks about any it can't verify.
 - [ ] **EU trader status (Digital Services Act)**: App Store Connect > Business (or the app's
       App Information): declare trader or non-trader. Without it the app can't go on sale in the
       EU. Trader status publishes an address, phone and email on the product page.
-- [ ] **Pricing and Availability**: price **Free** (USD 0.00, the old tier 0); pick countries
-      (default all). Untick **iPhone and iPad apps on Apple Silicon Macs** and **Apple Vision Pro**:
+- [x] **Pricing and Availability**: price **Free** (USD 0.00, the old tier 0), set by API on
+      2026-11-20; every country except mainland China (its AI-content and security forms block
+      submission, and games there need a license). Untick **iPhone and iPad apps on Apple Silicon Macs** and **Apple Vision Pro**:
       the game needs touch and a whole-number pixel scale. Leave pre-orders off.
-- [ ] **App Privacy**: set the Privacy Policy URL (`fastlane/metadata/en-US/privacy_url.txt`),
+- [x] **App Privacy** (published by fastlane on 2026-11-20): set the Privacy Policy URL (`fastlane/metadata/en-US/privacy_url.txt`),
       then Get Started > "No, we do not collect data from this app" > Publish. (fastlane's
       `upload_app_privacy_details_to_app_store` needs an Apple ID login, not the API key, so this
       stays manual. It's one click.)

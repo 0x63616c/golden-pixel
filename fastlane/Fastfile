@@ -29,12 +29,24 @@ def allow_write!(what)
   UI.user_error!("Refusing to #{what}: it writes to App Store Connect. Rerun with GP_ASC_WRITE=1 once the user has approved it.")
 end
 
+# The API key when ASC_KEY_* are set (CI, or locally from 1Password); otherwise, locally, the
+# saved Apple ID web session of FASTLANE_USER (fastlane/.env), which needs no password while
+# its cookie in ~/.fastlane/spaceship is valid.
 private_lane :api_key do
-  app_store_connect_api_key(
-    key_id: ENV.fetch("ASC_KEY_ID"),
-    issuer_id: ENV.fetch("ASC_ISSUER_ID"),
-    key_content: ENV.fetch("ASC_KEY_CONTENT")
-  )
+  if ENV["ASC_KEY_ID"].to_s.empty? && !ENV["FASTLANE_USER"].to_s.empty?
+    Spaceship::ConnectAPI.login(ENV["FASTLANE_USER"], use_portal: false, use_tunes: true)
+  else
+    app_store_connect_api_key(
+      key_id: ENV.fetch("ASC_KEY_ID"),
+      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_content: ENV.fetch("ASC_KEY_CONTENT")
+    )
+  end
+end
+
+# deliver's login: none with the API key (it reads the lane's key), the Apple ID otherwise.
+def deliver_auth
+  ENV["ASC_KEY_ID"].to_s.empty? && !ENV["FASTLANE_USER"].to_s.empty? ? { username: ENV["FASTLANE_USER"] } : {}
 end
 
 # The internal "Me" group gets every build; the account holder is its tester.
@@ -231,7 +243,7 @@ platform :ios do
       force: true # skip deliver's HTML preview prompt; the skill shows the user the diff first
     }
     args[:app_review_information] = review unless review.empty?
-    deliver(**args)
+    deliver(**args, **deliver_auth)
     summary("## App Store listing\n- Uploaded metadata#{shots ? " and screenshots" : ""} for #{marketing_version}")
   end
 
@@ -242,6 +254,7 @@ platform :ios do
     UI.user_error!("Pass build:<number>: a VALID TestFlight build of #{marketing_version} (see appstore_status)") if build.empty?
     api_key
     deliver(
+      **deliver_auth,
       app_identifier: BUNDLE_ID,
       app_version: marketing_version,
       build_number: build,
@@ -260,5 +273,75 @@ platform :ios do
       }
     )
     summary("## App Store review\n- Submitted #{marketing_version} (#{build}) for review, manual release")
+  end
+
+  # The iOS 27 creative asset: marketing/assets/appstore-creative-5244x2950.png (made by
+  # marketing/tools/make-creative.py), uploaded to the app's asset library once, then placed as
+  # the product page header and the search results art on every localization of the version.
+  # Placements lock while the version is in review: run this before `release`.
+  desc "WRITE (GP_ASC_WRITE=1): upload the creative asset and place it as header + search results art"
+  lane :creative do
+    allow_write!("upload the App Store creative asset")
+    require "net/http"
+    api_key
+    asc = Spaceship::ConnectAPI.client.tunes_request_client
+    get_all = lambda do |path, params = {}|
+      out = []
+      resp = asc.get(path, params.merge(limit: 200))
+      loop do
+        out.concat(Array(resp.body["data"]))
+        nxt = resp.body.dig("links", "next")
+        break unless nxt
+        resp = asc.get(nxt.sub(%r{^https://[^/]+/(iris/)?}, ""))
+      end
+      out
+    end
+    app = Spaceship::ConnectAPI::App.find(BUNDLE_ID)
+    file = File.expand_path("../marketing/assets/appstore-creative-5244x2950.png", __dir__)
+    UI.user_error!("Run marketing/tools/make-creative.py first") unless File.exist?(file)
+    bytes = File.binread(file)
+    img = get_all.call("v1/appAssetLibraries/#{app.id}/images").find do |i|
+      a = i["attributes"]
+      a["category"] == "CREATIVE_ASSETS" && a["fileName"] == File.basename(file) && a["fileSize"] == bytes.bytesize
+    end
+    unless img
+      img = asc.post("v1/appAssetLibraryImages", { data: { type: "appAssetLibraryImages",
+        attributes: { fileName: File.basename(file), fileSize: bytes.bytesize, category: "CREATIVE_ASSETS" },
+        relationships: { assetLibrary: { data: { type: "appAssetLibraries", id: app.id } } } } }).body["data"]
+      Array(img["attributes"]["uploadOperations"]).each do |op|
+        uri = URI(op["url"])
+        req = Net::HTTP.const_get(op["method"].capitalize).new(uri)
+        op["requestHeaders"].each { |h| req[h["name"]] = h["value"] }
+        req.body = bytes.byteslice(op["offset"], op["length"])
+        Net::HTTP.start(uri.host, uri.port, use_ssl: true) { |http| http.request(req).value }
+      end
+      asc.patch("v1/appAssetLibraryImages/#{img["id"]}", { data: { type: "appAssetLibraryImages", id: img["id"], attributes: { uploaded: true } } })
+    end
+    UI.success("Creative asset in the library (#{img["id"]})")
+
+    version = asc.get("v1/apps/#{app.id}/appStoreVersions", { "filter[platform]" => "IOS" }).body["data"]
+      .find { |v| %w[PREPARE_FOR_SUBMISSION DEVELOPER_REJECTED REJECTED METADATA_REJECTED].include?(v["attributes"]["appStoreState"]) }
+    UI.user_error!("No editable App Store version (placements lock in review)") unless version
+    types = %w[PRODUCT_PAGE_HEADER_ASSET APP_STORE_SEARCH_RESULTS_ASSET]
+    get_all.call("v1/appStoreVersions/#{version["id"]}/appStoreVersionLocalizations").each do |loc|
+      locale = loc["attributes"]["locale"]
+      placed = Array(asc.get("v1/appStoreVersionLocalizations/#{loc["id"]}/placements", { limit: 200, include: "image" }).body["data"])
+        .select { |p| types.include?(p["attributes"]["placementType"]) }
+      if placed.size == types.size && placed.all? { |p| p.dig("relationships", "image", "data", "id") == img["id"] }
+        UI.success("#{locale}: creative asset already placed")
+        next
+      end
+      placed.each { |p| asc.delete("v1/appAssetLibraryPlacements/#{p["id"]}") }
+      types.each do |type|
+        asc.post("v1/appAssetLibraryPlacements", { data: { type: "appAssetLibraryPlacements",
+          attributes: { placementType: type, placementGroup: "DEFAULT_PROFILE" },
+          relationships: {
+            appStoreVersionLocalization: { data: { type: "appStoreVersionLocalizations", id: loc["id"] } },
+            image: { data: { type: "appAssetLibraryImages", id: img["id"] } }
+          } } })
+        UI.success("#{locale}: placed as #{type}")
+      end
+    end
+    summary("## App Store creative asset\n- Placed as product page header and search results art")
   end
 end

@@ -2,6 +2,7 @@
 # Build, install and launch the native iOS app. Used by the justfile and CI:
 #   ios/ios.sh project                 regenerate GoldenPixel.xcodeproj from project.yml
 #   ios/ios.sh sim [duo|iphone|max]    build + run on a simulator (default: the iPhone Duo)
+#                                      muted (-GPMute); SOUND=1 for music and effects
 #   ios/ios.sh device [debug]          build (Release by default) + install + launch on a USB/Wi-Fi iPhone
 #   ios/ios.sh archive <build>         archive + export an App Store .ipa into ios/build/export
 #                                      (CI: signs with the App Store Connect API key in ASC_KEY_PATH)
@@ -84,7 +85,12 @@ commit() {
   echo "$sha"
 }
 
-ensure_project() { [[ -d GoldenPixel.xcodeproj && GoldenPixel.xcodeproj -nt project.yml ]] || project; }
+# Always regenerate: sources are globbed, so a new file (App/Music.swift) changes the project
+# without touching project.yml. It takes about a second.
+ensure_project() { project; }
+
+# Simulators play through the Mac's speakers: launch muted unless SOUND=1.
+mute_flag() { [[ "${SOUND:-}" == 1 ]] || echo "-GPMute YES"; }
 
 sim_udid() {
   local udid
@@ -117,7 +123,7 @@ sim() {
   # A booted Duo starts folded with the inner screen black; unfold it flat.
   [[ "$SIM_TYPE" == *Duo* ]] && unfold "$udid"
   xcrun simctl install "$udid" build/sim/Build/Products/Debug-iphonesimulator/GoldenPixel.app
-  xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" ${SCENE:+-GPScene "$SCENE"}
+  xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" ${SCENE:+-GPScene "$SCENE"} $(mute_flag)
 }
 
 # Boots the simulator, retrying from a clean shutdown once; first boots on CI runners are flaky.
@@ -208,7 +214,8 @@ appstore() {
   done
   local py=(python3)
   command -v uv >/dev/null && py=(uv run --quiet --with pillow python3)
-  "${py[@]}" ../tools/appstore.py shots "$out" ../fastlane/screenshots/en-US "${STORE_SCENES[@]}"
+  # Absolute paths: appstore.py runs from the repo root, so a relative ../fastlane lands outside it.
+  "${py[@]}" ../tools/appstore.py shots "$out" "$(cd .. && pwd)/fastlane/screenshots/en-US" "${STORE_SCENES[@]}"
 }
 
 # Screenshots of every staged scene on the current simulator, into <out>; with a second
@@ -242,7 +249,7 @@ capture() {
   local scene
   for scene in "${SHOT_SCENES[@]}"; do
     say "Scene $scene"
-    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" ${STORE_SHOTS:+-GPStore YES} >/dev/null
+    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" ${STORE_SHOTS:+-GPStore YES} $(mute_flag) >/dev/null
     sleep 4
     limit 30 xcrun simctl io "$udid" screenshot ${inner:+--display=$inner} "$out/$scene.png"
     [[ -n "$outer" ]] && { limit 30 xcrun simctl io "$udid" screenshot --display="$outer" "$out/outer/$scene.png" || true; }
@@ -250,7 +257,7 @@ capture() {
   [[ -n "$record" ]] || return 0
   for scene in menu late gold; do
     say "Recording $scene"
-    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
+    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" $(mute_flag) >/dev/null
     sleep 1
     xcrun simctl io "$udid" recordVideo ${inner:+--display=$inner} --codec=h264 --force "$out/$scene.mp4" &
     local rec=$!

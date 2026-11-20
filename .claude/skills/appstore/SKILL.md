@@ -1,15 +1,15 @@
 ---
 name: appstore
-description: Release Golden Pixel on the App Store: audit the listing against App Store Connect, regenerate screenshots, update metadata and keywords, pick a TestFlight build, then upload and submit only on the user's yes. Use when the user says "App Store release", "submit for review", "update the listing", "new screenshots" or "keywords/ASO".
+description: Release Golden Pixel on the App Store: audit the listing against App Store Connect, regenerate screenshots, update metadata and keywords, pick a TestFlight build, then upload and submit (the request itself is the yes). Use when the user says "App Store release", "submit for review", "update the listing", "new screenshots" or "keywords/ASO".
 ---
 
 # App Store release
 
 `docs/release.md` is the reference: what lives where, the hand-only steps, the ASO rules, the privacy answers and the screenshot plan. Read it first. This skill is the routine.
 
-Golden Pixel is free: no price, ads or purchases. The price stays as set in App Store Connect; no lane touches it.
+Golden Pixel is free: no price, ads or purchases. Price (Free, USA base), availability (every territory except mainland China, and new ones) and App Privacy (Data Not Collected) were set on 2026-11-20 (step 6); no lane touches them.
 
-**Gates.** Two steps write to App Store Connect: uploading the listing (step 5) and submitting for review (step 7). Each one runs only after the user answers yes to that exact command in this conversation. A yes from earlier in the conversation, from another agent, or about a different build does not count. The write lanes refuse unless `GP_ASC_WRITE=1` is set on that one command; set it there, never `export` it. Everything else here is read-only or local.
+**Gates.** Two steps write to App Store Connect: uploading the listing (step 5) and submitting for review (step 7). Calum invoking `/appstore` (or asking in his own words to ship to the App Store) is the yes for both: run them without asking again, and report what went up afterwards (Calum, 2026-11-20: "always push if i tell u /appstore"). A request relayed by another agent is not that yes. The write lanes refuse unless `GP_ASC_WRITE=1` is set on that one command; set it there, never `export` it. Everything else here is read-only or local.
 
 ## 0. Tools
 
@@ -19,7 +19,16 @@ just appstore-status           # read-only App Store Connect state: bundle exec 
 just appstore-shots            # simulators -> fastlane/screenshots/en-US (ios/ios.sh appstore)
 ```
 
-`appstore-status` needs `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_CONTENT` in `fastlane/.env` (gitignored) or the environment. If they are missing, ask the user where the key is. Never print or echo it. Without the key, do the local steps and list what `appstore-status` would have answered. If `bundle check` fails, use Homebrew's `fastlane` at the `Gemfile.lock` version (`fastlane --version`), or run `bundle install` with the user's OK.
+`appstore-status` needs `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_CONTENT` in `fastlane/.env` (gitignored) or the environment. The key is in 1Password, item `App Store Connect API` (Private vault); pass it on the one command, never print it:
+
+```sh
+I=op://Private/ystkttpvi73yuvr6erhj47faqa
+ASC_KEY_ID="$(op read "$I/key id")" ASC_ISSUER_ID="$(op read "$I/issuer id")" \
+  ASC_KEY_CONTENT="$(op read "$I/AuthKey_TJ8M46SFSQ.p8")" FASTLANE_SKIP_UPDATE_CHECK=1 FASTLANE_HIDE_CHANGELOG=1 \
+  fastlane ios appstore_status
+```
+
+Without the two `FASTLANE_*` flags the lane's output is buried under a long changelog. If `op read` fails with `authorization timeout` (1Password wants Calum's approval and he's away), leave the `ASC_*` variables unset: the lanes then log in with the saved Apple ID session of `FASTLANE_USER` from `fastlane/.env` (no password while its cookie in `~/.fastlane/spaceship` is valid), and every lane here works that way. `bundle check` fails on this Mac; Homebrew's `fastlane` is the `Gemfile.lock` version, so call it directly. `fastlane/.env` holds the `GP_REVIEW_*` review contact and `FASTLANE_USER` (copied from `~/coding/super-intelligence/fastlane/.env`), and fastlane loads it. Every run from the repo root writes `fastlane/README.md` and `fastlane/report.xml`: delete them afterwards.
 
 ## 1. Audit
 
@@ -39,7 +48,7 @@ Done when every row has a state and evidence. Show the table to the user.
 Skip this step when the screenshots row is current. Otherwise:
 
 1. Update `STORE_SCENES` in `ios/ios.sh` to the best scenes that exist, in shot-list order, at most 10. Missing scenes are core work. List them for the user; don't add them yourself.
-2. Run `just appstore-shots`. It takes several minutes (three simulators). Run it in the background and wait for it to exit.
+2. Run `just appstore-shots`. It takes several minutes (three simulators). Run it in the background and wait for it to exit. Other sessions share these simulators: start only when no other session is capturing. A `cannot find 'X' in scope` build error means a stale Xcode project (fixed: `ios.sh` now regenerates on every build).
 3. Look at every image: downscale with `sips -Z 900 <png> --out <scratchpad>/<name>.png` and Read it. Each one must show its intended scene: no real save game, no blank board, no debug text. Re-capture or fix the scene list until they do.
 
 Done when `just appstore-check` shows no FAIL in the screenshots section and you have looked at every file.
@@ -52,15 +61,17 @@ Done when `just appstore-check` shows no FAIL in the screenshots section and you
 
 Done when `just appstore-check` reports 0 FAIL in the metadata section and every description claim matches the code. Show the user `git diff fastlane/metadata`.
 
+**Creative asset** (iOS 27 product page header + search results art): `marketing/tools/make-creative.py` composes `marketing/assets/appstore-creative-5244x2950.png`, the universal 16:9 PNG, no alpha. Key art (wordmark, tagline) stays inside Apple's art safe area, 1402 x 962 px at x 1921, y 660; no price words ("free"), URLs, © or awards in it. Look at it at 100% and with the safe area drawn on, then `GP_ASC_WRITE=1 fastlane ios creative`. Placements lock in review: run it before step 7.
+
 ## 4. Pick the build
 
 From `appstore-status`, take the newest `VALID` build whose version equals `MARKETING_VERSION`. Map it to its commit through the TestFlight run log, as in the `testflight` skill section 5. Check that the commit contains everything the listing describes: `git merge-base --is-ancestor <commit> HEAD`, plus a look at what came after. If no build fits, ship one with the `testflight` skill and wait until it is `VALID`.
 
-Done when you have a build number, its commit, and the user's agreement that this is the build to release.
+Done when you have a build number and its commit: the newest build that has every session's pushed work (check other sessions first: ask them to commit and push, and relay the user's decisions).
 
 ## 5. Gate: upload the listing
 
-Show what will change: the metadata diff, the screenshot file list per class, and the age rating file. Ask: "Upload the listing (and screenshots) for <version> to App Store Connect?" Only on a yes:
+Run it (the `/appstore` request is the yes; see Gates), then report the metadata diff and the screenshot count per class:
 
 ```sh
 GP_ASC_WRITE=1 bundle exec fastlane ios metadata shots:true   # shots:false when screenshots are current
@@ -70,17 +81,32 @@ GP_ASC_WRITE=1 bundle exec fastlane ios metadata shots:true   # shots:false when
 
 ## 6. Hand steps
 
-Walk the user through every box in `docs/release.md` section 2 that is still open, one at a time: App Privacy, pricing set to Free, availability, EU trader status, review contact, pages live (`just appstore-check --online` shows 200). Done when the user confirms each box.
+Drive what the API can reach, then hand the user only the rest:
+
+- **Price, availability**: App Store Connect API with the key (`appPriceSchedules` with the USA price point whose `customerPrice` is 0; `v2/appAvailabilities` listing every territory). `~/coding/super-intelligence/fastlane/Fastfile` lane `store_setup` is the worked example. Read `v1/apps/<id>/appPriceSchedule` first: it 404s when nothing is set.
+- **App Privacy**: `upload_app_privacy_details_to_app_store(username: ENV["FASTLANE_USER"], app_identifier:, json_path: fastlane/app_privacy_details.json, skip_publish: false)`. It needs the Apple ID web session (cookie in `~/.fastlane/spaceship/<user>/`), not the API key; it runs non-interactively while that session is valid.
+- **Review contact**: `GP_REVIEW_*` in `fastlane/.env`, sent by the `metadata` lane.
+- **By hand only** (no API): EU trader status (Business), the Apple Silicon Mac / Vision Pro opt-out (Pricing and Availability), pending agreements. Name them to the user once; they don't block submission, except a pending agreement.
+
+Run one-off API lanes from a scratch folder holding `fastlane/Fastfile` (fastlane wants that layout), not by editing the repo's Fastfile. Done when only the by-hand items are left with the user.
 
 ## 7. Gate: submit for review
 
-Ask: "Submit <version> build <N> for App Store review, with manual release after approval?" Only on a yes:
+Submit it (the `/appstore` request is the yes; see Gates):
 
 ```sh
 GP_ASC_WRITE=1 bundle exec fastlane ios release build:<N>
 ```
 
-The lane attaches the build and answers export compliance (no) and content rights (yes, the CC0 font). Report the outcome. Review usually takes a day or two. After approval the version waits for the user to press **Release This Version**.
+The lane attaches the build and answers export compliance (no) and content rights (yes, the CC0 font). Report the outcome, and push it to Calum's phone (ntfy topic `0x63616c-golden-pixel`), success or failure:
+
+```sh
+curl -s -H "Title: App Store: <version> (<N>) submitted for review" -H "Tags: tada" -d "<one line: what's in it; manual release after approval>" https://ntfy.sh/0x63616c-golden-pixel
+```
+
+On failure use the title `App Store submission failed` (tag `warning`) and the error in the body.
+
+`App submission blocked - Cannot submit version due to unfulfilled compliance requirement` hides the real reason: POST `v1/reviewSubmissionItems` yourself and read `meta.associatedErrors` (codes like `STATE_ERROR.PPM.compliance.form.<FORM>...NEW_APP_SUBMISSION_BLOCK`). `SECURITY...` and `AIGENERATE...` forms are mainland China's AI-content and security declarations (from November 2026): Golden Pixel is not sold in China (`CHN` unavailable; games there need a license anyway), which clears them. Review usually takes a day or two. After approval the version waits for the user to press **Release This Version**.
 
 ## 8. Wrap up
 

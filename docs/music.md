@@ -29,7 +29,9 @@ own declaration.
 - `App/Music.swift` fades between the menu loop and the level (1.2 s) and from one level
   track into the next (3 s). Going to the menu and back picks the level track up where it
   stopped.
-- It stays silent while another app is playing audio, and in staged scenes (`-GPScene`).
+- It stays silent while another app is playing audio, in staged scenes (`-GPScene`), and
+  with `-GPMute YES`, which `ios/ios.sh` passes on every simulator launch so simulators don't
+  play through the Mac's speakers (sound effects too). `SOUND=1 just ios-sim` turns it back on.
 
 ## Adding or changing a track
 

@@ -44,6 +44,7 @@ On a failure, fix it and rerun the failing check; ship nothing red.
 - Read `git diff --cached` after staging: it is what ships, and another session can edit a file between your review and your `git add`. For a hunk you did not review, `git restore --staged <path>` and ask, or stage what it depends on and rerun the preflight check it touches. Every path the staged `ios/project.yml` names is tracked or staged (`git ls-files --error-unmatch <path>`).
 - Leave out `Gemfile.lock`, `.claude/worktrees/`, `build/`, `ios/build/`, `fastlane/.env*`, `*.p8` and anything else secret. Never print secrets.
 - Conventional Commit message (`feat: ...`, `fix: ...`), then `git push origin main`. The pre-commit hook reruns `swift test` when `Core/` is staged.
+- Shipping a commit made in a `.claude/worktrees/<name>` worktree (other sessions have work in the main checkout): there, `git fetch origin main && git rebase origin/main`, rerun the preflight on the rebased commit, `git push origin <branch>:main`, then `git -C <main checkout> merge --ff-only <branch>` so local `main` keeps up. The merge refuses only when the main checkout has uncommitted edits to a file the commit touches; then leave local `main` for that session to pull.
 - Batch related changes into one push: each push to `main` is a build.
 - A push touching only `docs/**`, `site/**` or `.md` files anywhere (`**.md`, skills included) starts no build. To ship one anyway: `gh workflow run testflight.yml --ref main -f changelog="<what to test>"`.
 
@@ -74,6 +75,14 @@ gh run view "$id" --log | grep -E 'Uploaded \*\*|Processing state.*\(20[0-9]{10}
 ```
 
 The build number (`CFBundleVersion`) is set in `fastlane/Fastfile` lane `beta`: the UTC time when the lane starts, `YYYYMMDDHHMM` (e.g. `202611201804`), passed to `ios/ios.sh archive` as `CURRENT_PROJECT_VERSION`. It is not the GitHub run number. Version is `MARKETING_VERSION` in `ios/project.yml` (e.g. `1.0.0`). Tell the user: "TestFlight shows `1.0.0 (<build>)`; the app shows the same build number." If the state is `VALID` it is installable now; if `PROCESSING`, Apple needs a few more minutes.
+
+**Notify.** On every outcome (success, failure, canceled), push one line to Calum's phone (ntfy topic `0x63616c-golden-pixel`):
+
+```sh
+curl -s -H "Title: TestFlight 1.0.0 (<build>) ready" -H "Tags: rocket" -d "<one line: what's in it, or the failed step>" https://ntfy.sh/0x63616c-golden-pixel
+```
+
+Use the title `TestFlight build failed` or `TestFlight run canceled` (tag `warning`) for the other outcomes. Send it once per run, from the session that watched it.
 
 **Failure.** Run `gh run view "$id" --log-failed`, find the first real error (not the cascade after it), tell the user the step and the error in a sentence or two, and propose a fix. Common steps: `Check secrets` (missing ASC secret in the `testflight` environment), `Core tests`, `Build and upload` (signing or `Build N is not above the latest TestFlight build`: rerun a minute later with `gh run rerun "$id"`).
 
