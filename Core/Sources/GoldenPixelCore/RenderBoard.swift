@@ -253,7 +253,8 @@ extension Renderer {
         c.clip = nil
         let label = "HOLD AN OPEN SPOT, DRAG TO AIM"
         let w = PixelFont.measure(label)
-        let tx = L.board.x + (L.board.w - w) / 2, ty = L.board.maxY - 34
+        let A = L.boardContent
+        let tx = A.x + (A.w - w) / 2, ty = min(L.board.maxY - 34, A.maxY - 15)
         c.fill(tx - 4, ty - 4, w + 8, 15, Palette.black)
         c.text(label, tx, ty, Palette.text2)
     }
@@ -266,8 +267,9 @@ extension Renderer {
         if z.isAtRest && z.zoom != 1 {
             let s = z.zoom < 1 ? "0.5x" : "\(Int(z.zoom))x"
             let w = PixelFont.measure(s)
-            c.fill(L.board.maxX - w - 12, L.board.y + 4, w + 8, 15, Palette.black)
-            c.text(s, L.board.maxX - w - 8, L.board.y + 8, Palette.text2)
+            let A = L.boardContent
+            c.fill(A.maxX - w - 12, A.y + 4, w + 8, 15, Palette.black)
+            c.text(s, A.maxX - w - 8, A.y + 8, Palette.text2)
         }
     }
 }

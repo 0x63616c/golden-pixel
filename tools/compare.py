@@ -6,7 +6,7 @@
 Reads <dir>/<sim>/<scene>.png (what `ios/ios.sh compare` writes) and writes one sheet per
 scene to <dir>/sheets/<scene>.png, plus <dir>/sheets/all.png with every scene. Each screenshot
 is turned landscape and shown at 1 px per point (a third of its pixels, exact texel picks, no
-filtering), so the phones keep their relative sizes: all three are @3x at about 460 ppi.
+filtering), so the phones keep their relative sizes.
 
 Each label gives the screenshot size, the art scale found in the image (device pixels per art
 pixel) and the art canvas that gives. With <dir>/<sim>.mask.png (the screen's outline as
@@ -23,10 +23,11 @@ from math import gcd
 
 from PIL import Image, ImageDraw, ImageFont
 
-NAMES = {"duo": "iPhone Duo (inner)", "iphone": "iPhone 18 Pro", "max": "iPhone 18 Pro Max"}
+NAMES = {"duo": "iPhone Duo (inner)", "iphone": "iPhone 18 Pro", "max": "iPhone 18 Pro Max",
+         "se": "iPhone SE", "mini": "iPhone 13 mini"}
 # Screenshots come out in the panel's native portrait; the app runs landscape.
 TURN = Image.Transpose.ROTATE_90
-POINT = 3  # device pixels per point on every current iPhone
+POINT = 3  # device pixels per point, unless the safe-area file says otherwise ("scale")
 PAD, LABEL = 12, 22
 BG, INK, DIM, SAFE = (24, 24, 28), (235, 235, 240), (150, 150, 160), (255, 60, 170)
 
@@ -72,8 +73,9 @@ def tile(sim, path, font, mask, insets):
     w, h = im.size
     if mask is not None and mask.size == im.size:
         im = Image.composite(im, Image.new("RGB", im.size, BG), mask)
-    small = im.resize((w // POINT, h // POINT), Image.Resampling.NEAREST)
-    text = (f"{NAMES.get(sim, sim)}   {w} x {h} px   {w // POINT} x {h // POINT} pt   "
+    point = round(insets.get("scale", POINT)) if insets else POINT
+    small = im.resize((w // point, h // point), Image.Resampling.NEAREST)
+    text = (f"{NAMES.get(sim, sim)}   {w} x {h} px   {w // point} x {h // point} pt   "
             f"art scale {n}   canvas {w // n} x {h // n}")
     if insets:
         l, t, r, b = (round(insets[k]) for k in ("left", "top", "right", "bottom"))

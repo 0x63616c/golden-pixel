@@ -7,6 +7,7 @@ and somewhere out there one golden pixel is pulsing. Break it to go deeper.
 - Fully native Swift: a pure-Swift game core rasterises one low-res RGBA frame on the CPU,
   and Metal shows it at an integer scale with nearest sampling (plus an optional bloom pass).
 - Built for the iPhone Duo's inner screen: a 475×334 art canvas × 6 = 2850×2004, edge to edge.
+  Other iPhones get the same pixel size on a smaller canvas, and the layout fits itself to it.
 - TestFlight builds come from CI on every merge to `main`.
 
 ```sh

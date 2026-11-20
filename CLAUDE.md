@@ -31,6 +31,7 @@ python3 tools/gridcheck.py build/render/*.png     # grid check (needs Pillow; de
 just ios-sim                                  # Duo simulator; SCENE=mid just ios-sim for a staged scene
 just shots                                    # Duo simulator screenshots of staged scenes
 just compare                                  # the same scenes on the Duo, iPhone 18 Pro and Pro Max, side by side
+swift run -c release gp-render all build/phone --device iphone   # a phone's canvas without a simulator (duo, iphone, max, se, mini)
 just hooks                                    # once per clone: enable .githooks/pre-commit
 ```
 
@@ -53,6 +54,12 @@ Scenes are defined in `Core/Sources/GoldenPixelCore/Scenes.swift`. `just render`
 - **Mind the corners.** The Duo's inner screen corners are heavily rounded: no button or
   text within `Tuning.cornerRadius` of a corner, and every button at least `Tuning.minTouch`
   square (`UISafetyTests`).
+- **Every phone, same pixels.** An art pixel is 2 points on every screen, so a smaller phone
+  gets a smaller canvas (437x201 on an iPhone 18 Pro), never a smaller UI. Lay out from
+  `Layout` (`safeArea`, `panelContent`, `clear`, `centred`, `short`), not from canvas
+  constants: nothing you read or press goes outside the safe area (the Dynamic Island's
+  side, the home indicator). `UISafetyTests` checks every scene on every `Device.all`; run
+  `just compare` and look at the sheets after a layout change.
 - **Only balls break pixels.** Touches never damage the board.
 - **One frame buffer.** Never add per-pixel nodes or views. New visuals are `Canvas` drawing
   code in `Renderer.swift` and its `Render*.swift` extensions; the alpha byte is the glow (bloom) mask.
@@ -65,7 +72,8 @@ Scenes are defined in `Core/Sources/GoldenPixelCore/Scenes.swift`. `just render`
   `Core/Tests`. Run `swift test` before every commit (the pre-commit hook does it).
 - **Look at it.** For visual changes, run `just render` (or `just shots` on a Mac) and check
   the PNGs at 100%: every edge must land on the grid.
-- **Target device:** iPhone Duo inner screen (see `docs/ios.md`). Other phones letterbox.
+- **Target device:** iPhone Duo inner screen (see `docs/ios.md`). Other phones get the same
+  art-pixel size on a smaller canvas, and the layout fits itself to it.
 
 ## Shipping
 

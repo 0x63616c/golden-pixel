@@ -55,13 +55,20 @@ extension Renderer {
             hit(Rect(p.x - hs / 2, p.y - hs / 2, hs, hs), .selectSkill(s.id))
         }
 
-        // Header: the shards to spend, and the way out (both clear of the corners).
-        let hx = Tuning.cornerRadius + 6
+        // Header: the shards to spend, and the way out (both inside the safe area and clear
+        // of the corners).
+        let K = layout.clear
+        let hx = K.x + 6
+        // Each sits on a black plate, so a node panned underneath never runs into it.
         let count = "\(g.progress.shards)"
-        c.sprite(Sprites.shard, hx, 8, scale: 2)
-        let w = 18 + c.text(count, hx + 18, 8, Palette.mint, scale: 2)
-        hit(Rect(hx - 4, 4, w + 8, 22), .none, ["SHARDS", "Break mint shard pixels for more"])
-        let close = Rect(c.width - Tuning.cornerRadius - 34, 4, 30, 26)
+        let w = 18 + PixelFont.measure(count, scale: 2)
+        let plate = Rect(hx - 4, K.y + 4, w + 8, 22)
+        c.fill(plate, Palette.black)
+        c.sprite(Sprites.shard, hx, K.y + 8, scale: 2)
+        c.text(count, hx + 18, K.y + 8, Palette.mint, scale: 2)
+        hit(plate, .none, ["SHARDS", "Break mint shard pixels for more"])
+        let close = Rect(K.maxX - 34, K.y + 4, 30, 26)
+        c.fill(close, Palette.black)
         button(g, close, "", .closeSkills, style: .bare, icon: Sprites.close, tintIcon: true)
 
         drawSkillCard(g)
@@ -138,10 +145,13 @@ extension Renderer {
         let ball = s.effect.ball
 
         // Sizes first: a 44-px icon tile on the left, the price button on the right (as tall
-        // as the tile), and the text between them, centred on the tile.
-        let pad = 9, tileSize = 44, bw = 96
-        let side = Tuning.cornerRadius + 8
-        let cardW = c.width - 2 * side
+        // as the tile), and the text between them, centred on the tile. A short screen gets
+        // a smaller tile and tighter gaps, so more of the tree shows above the card.
+        let K = layout.clear, tight = layout.short
+        let pad = tight ? 7 : 9, tileSize = tight ? 36 : 44, bw = 96
+        let nameGap = tight ? 5 : 7, rankGap = tight ? 6 : 9
+        let side = K.x + 8
+        let cardW = K.w - 16
         let tx = side + pad + tileSize + 10, tw = side + cardW - pad - bw - 10 - tx
         let name = s.name.uppercased()
         let nameScale = PixelFont.measure(name, scale: 2) + (ball == nil ? 0 : 16) <= tw ? 2 : 1
@@ -149,14 +159,14 @@ extension Renderer {
         let showRank = s.ranks > 1 || rank > 0
         let nameH = PixelFont.capHeight * nameScale
         let textH = (lines.count - 1) * PixelFont.lineHeight + PixelFont.capHeight
-        let blockH = nameH + 7 + textH + (showRank ? 9 + PixelFont.capHeight : 0)
+        let blockH = nameH + nameGap + textH + (showRank ? rankGap + PixelFont.capHeight : 0)
         let innerH = max(tileSize, blockH)
 
         // Along the bottom, unless the selected node is under it: then along the top, below
         // the header.
-        var card = Rect(side, c.height - 6 - innerH - 2 * pad, cardW, innerH + 2 * pad)
+        var card = Rect(side, K.maxY - 6 - innerH - 2 * pad, cardW, innerH + 2 * pad)
         let v = g.ui.treeCamera.toView(SkillTree.position(s).x, SkillTree.position(s).y)
-        if Int(v.y) + Renderer.nodeSize(g.ui.treeCamera.zoom) / 2 + 4 >= card.y { card.y = 34 }
+        if Int(v.y) + Renderer.nodeSize(g.ui.treeCamera.zoom) / 2 + 4 >= card.y { card.y = K.y + 34 }
         box(card, Palette.panel1, edge: Palette.panel3, notch: 2)
         hit(card, .none)
 
@@ -176,13 +186,13 @@ extension Renderer {
         if let k = ball {
             c.sprite(Sprites.ball(k), nameEnd + 3 * nameScale, y + (nameH - 5 * nameScale) / 2, scale: nameScale)
         }
-        y += nameH + 7
+        y += nameH + nameGap
         for line in lines {
             c.text(line, tx, y, Palette.text2)
             y += PixelFont.lineHeight
         }
         guard showRank else { return }
-        y += PixelFont.capHeight - PixelFont.lineHeight + 9
+        y += PixelFont.capHeight - PixelFont.lineHeight + rankGap
         if s.ranks > 1 {
             var x = tx
             let on = ball?.color ?? Palette.accent

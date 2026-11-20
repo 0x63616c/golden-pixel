@@ -1,7 +1,7 @@
 /// Staged game states for previews, screenshots and UI tests. The app opens one with the
 /// launch argument `-GPScene <name>` (DEBUG builds and the screenshot job only).
 public enum Scenes {
-    public static let names = ["menu", "howto", "settings", "start", "early", "mid", "late", "tree", "sheet", "launch", "pause", "restart",
+    public static let names = ["menu", "howto", "settings", "start", "early", "mid", "late", "full", "tree", "sheet", "launch", "pause", "restart",
                                "gold", "zoom", "zoomout", "portrait", "hero", "goldhunt", "aim", "goldbreak"]
 
     /// What a TestFlight build shows in place of the app's real build label.
@@ -26,7 +26,7 @@ public enum Scenes {
                             "basic-dmg": 2, "basic-spd": 1, "fast-dmg": 1]
             p.balls = [BallKind.basic.rawValue: BallProgress(owned: 24), BallKind.fast.rawValue: BallProgress(owned: 10),
                        BallKind.heavy.rawValue: BallProgress(owned: 5)]
-        case "late", "tree", "gold", "hero", "goldhunt", "goldbreak":
+        case "late", "full", "tree", "gold", "hero", "goldhunt", "goldbreak":
             p.level = 6; p.maxLevel = 6
             p.stars = 5
             p.money = 7_400_000
@@ -37,6 +37,11 @@ public enum Scenes {
             p.balls = [BallKind.basic.rawValue: BallProgress(owned: 70), BallKind.fast.rawValue: BallProgress(owned: 40),
                        BallKind.heavy.rawValue: BallProgress(owned: 24), BallKind.lightning.rawValue: BallProgress(owned: 22),
                        BallKind.bomb.rawValue: BallProgress(owned: 18), BallKind.sniper.rawValue: BallProgress(owned: 12)]
+            if name == "full" {
+                // Every ball type unlocked: the panel at its fullest.
+                p.skillRanks["u-ghost"] = 1
+                p.balls[BallKind.ghost.rawValue] = BallProgress(owned: 7)
+            }
         default: break
         }
         let g = Game(progress: p, seed: 7)
@@ -71,7 +76,7 @@ public enum Scenes {
             g.ui.camera.pinch(factor: 0.5, at: 160, 167)
             g.ui.camera.settle()
             settle(g, 1)
-        case "late": settle(g, 14)
+        case "late", "full": settle(g, 14)
         case "tree":
             // Opened the way a tap on the tree button does, so the camera frames the selection.
             settle(g, 4); g.ui.selectedSkill = "u-ghost"; g.perform(.openSkills); g.ui.pressed = .none

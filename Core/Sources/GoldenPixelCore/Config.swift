@@ -212,8 +212,15 @@ public enum Tuning {
     public static let artScale = 6
     public static let canvasWidth = 475
     public static let canvasHeight = 334
-    /// The inner screen's rounded corners, in art pixels. Nothing you need to read or press may
-    /// sit inside this radius of a screen corner (UISafetyTests checks it).
+    /// One art pixel is this many points on every screen (`Display.fit`), so the game is the
+    /// same physical size on a phone as on the Duo and a smaller screen shows a smaller canvas.
+    public static let pointsPerArtPixel = 2
+    /// The least clear canvas (inside the safe area) the layout is built for. A screen that
+    /// can't give this at 2 points per art pixel gets a smaller scale instead.
+    public static let minSafeLong = 300
+    public static let minSafeShort = 160
+    /// A rounded screen's corners, in art pixels. Nothing you need to read or press may sit
+    /// inside this radius of a screen corner (UISafetyTests checks it).
     public static let cornerRadius = 28
     /// The smallest thing you can press: 22 art pixels = 44 points.
     public static let minTouch = 22

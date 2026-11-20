@@ -57,37 +57,44 @@ final class PixelMetalView: MTKView, MTKViewDelegate {
 
     required init(coder: NSCoder) { fatalError("not used") }
 
-    /// The largest integer scale that keeps the canvas at least `Tuning.canvasHeight` (334)
-    /// art pixels on its short side. On the iPhone Duo's inner display (2853 x 2007 px) that is
-    /// 6, so the canvas is 475 x 334 (2850 x 2004 px, centred: 1.5 px spare per side).
-    static func fit(drawable: CGSize) -> (scale: Int, width: Int, height: Int) {
-        let w = Int(drawable.width), h = Int(drawable.height)
-        let scale = max(1, min(w, h) / Tuning.canvasHeight)
-        return (scale, max(1, w / scale), max(1, h / scale))
+    /// How the canvas sits in the drawable (`Display.fit` in the core): one art pixel is 2
+    /// points on every screen, so the Duo's inner display (2853 x 2007 px at @3x) gets a
+    /// 475 x 334 canvas at scale 6 and an iPhone 18 Pro (2622 x 1206 px) gets 437 x 201 at the
+    /// same scale. The safe area goes with it, so the layout keeps clear of the Dynamic Island
+    /// and the home indicator.
+    func display() -> Display {
+        let i = window?.safeAreaInsets ?? safeAreaInsets
+        return Display.fit(pixelWidth: Int(drawableSize.width), pixelHeight: Int(drawableSize.height),
+                           pointScale: Double(contentScaleFactor),
+                           safe: (Double(i.left), Double(i.top), Double(i.right), Double(i.bottom)))
     }
 
     func mtkView(_ view: MTKView, drawableSizeWillChange size: CGSize) {}
 
-    /// Staged scenes only: notes the safe area (in points) next to the save file, so the
-    /// screenshot tools (`ios/ios.sh compare`) can draw what the island and the home
-    /// indicator cover on each phone.
-    override func safeAreaInsetsDidChange() {
-        super.safeAreaInsetsDidChange()
+    /// Staged scenes only: notes the safe area (in points), the screen's pixels per point and
+    /// the art scale next to the save file, so the screenshot tools (`ios/ios.sh compare`) can
+    /// draw what the island and the home indicator cover on each phone and grid-check it.
+    private func noteScreen(_ d: Display) {
         guard host.scene != nil else { return }
         let i = window?.safeAreaInsets ?? safeAreaInsets
-        let json = "{\"top\": \(i.top), \"left\": \(i.left), \"bottom\": \(i.bottom), \"right\": \(i.right)}\n"
+        let json = "{\"top\": \(i.top), \"left\": \(i.left), \"bottom\": \(i.bottom), \"right\": \(i.right), "
+            + "\"scale\": \(contentScaleFactor), \"art\": \(d.scale)}\n"
+        guard json != screenNote else { return }
+        screenNote = json
         try? json.write(to: SaveStore.url.deletingLastPathComponent().appendingPathComponent("safe-area.json"),
                         atomically: true, encoding: .utf8)
     }
+    private var screenNote = ""
 
     func draw(in view: MTKView) {
         let now = CACurrentMediaTime()
         let dt = now - lastTime
         lastTime = now
-        let fit = Self.fit(drawable: drawableSize)
+        let fit = display()
         artScale = fit.scale
-        origin = SIMD2(Int32((Int(drawableSize.width) - fit.width * fit.scale) / 2), Int32((Int(drawableSize.height) - fit.height * fit.scale) / 2))
-        host.renderer.resize(width: fit.width, height: fit.height)
+        origin = SIMD2(Int32(fit.originX), Int32(fit.originY))
+        host.renderer.resize(to: fit)
+        noteScreen(fit)
         host.frame(dt: dt, now: now)
         host.renderer.render(host.game)
 

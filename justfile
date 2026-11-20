@@ -46,7 +46,7 @@ ios-device *args:
 shots out="build/shots" sim="duo":
     ios/ios.sh shots {{out}} {{sim}}
 
-# The same scenes on the Duo, iPhone 18 Pro and Pro Max, plus side-by-side sheets in <out>/sheets
+# The same scenes on the Duo, iPhone 18 Pro and Pro Max (or any of duo iphone max se mini), plus side-by-side sheets in <out>/sheets
 compare out="build/compare" *sims:
     ios/ios.sh compare {{out}} {{sims}}
 

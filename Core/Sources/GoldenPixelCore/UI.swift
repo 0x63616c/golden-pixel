@@ -81,6 +81,12 @@ public struct UIState: Sendable {
     public var pressedUntil = 0.0
     public var hits: [Hit] = []
     public var layout = Layout.make(width: Tuning.canvasWidth, height: Tuning.canvasHeight)
+    /// A card whose content is taller than the screen scrolls: how far down it is (art
+    /// pixels), how far it can go, and the part of the screen where a drag scrolls it. The
+    /// renderer sets the last two every frame.
+    public var scroll = 0
+    public internal(set) var scrollMax = 0
+    public internal(set) var scrollArea: Rect?
     /// Board zoom and pan. The UI itself never zooms.
     public var camera: Camera
     /// Skill-tree zoom and pan: the tree is a "board" of `SkillTree.size` art pixels.
@@ -147,31 +153,64 @@ public enum SkillTree {
 }
 
 /// Where the board and the panel go for a canvas size. Landscape puts the panel on the
-/// right; a tall canvas puts it underneath. The board view fills the rest.
+/// right; a tall canvas puts it underneath. The board view fills the rest, edge to edge.
+///
+/// The system covers part of some screens (the Dynamic Island's side, the home indicator):
+/// `safeArea` is what it leaves clear. The board and the panel's background run under the
+/// insets; everything you read or press stays inside the safe area and out of the rounded
+/// corners (`safe`).
 public struct Layout: Equatable, Sendable {
     public var width: Int
     public var height: Int
     public var board: Rect
     public var panel: Rect
     public var landscape: Bool
+    /// The canvas minus the system's insets.
+    public var safeArea: Rect
+    /// The screen's corner radius in art pixels (0 on a square screen).
+    public var corner: Int
 
     public static let panelWidth = 150
     public static let panelHeight = 200
+    /// A safe area shorter than this is "short": cards, the panel's header and the tree card
+    /// use their tight spacing. The Duo's is 317.
+    public static let shortHeight = 240
 
-    public static func make(width w: Int, height h: Int) -> Layout {
+    public static func make(width w: Int, height h: Int, insets i: Insets = .zero, corner: Int = Tuning.cornerRadius) -> Layout {
+        let s = Rect(i.left, i.top, max(1, w - i.left - i.right), max(1, h - i.top - i.bottom))
         if w >= h {
-            let pw = min(panelWidth, w / 2)
-            return Layout(width: w, height: h, board: Rect(0, 0, w - pw, h), panel: Rect(w - pw, 0, pw, h), landscape: true)
+            let px = s.maxX - min(panelWidth, s.w / 2)
+            return Layout(width: w, height: h, board: Rect(0, 0, px, h), panel: Rect(px, 0, w - px, h), landscape: true, safeArea: s, corner: corner)
         } else {
-            let ph = min(panelHeight, h / 2)
-            return Layout(width: w, height: h, board: Rect(0, 0, w, h - ph), panel: Rect(0, h - ph, w, ph), landscape: false)
+            let py = s.maxY - min(panelHeight, s.h / 2)
+            return Layout(width: w, height: h, board: Rect(0, 0, w, py), panel: Rect(0, py, w, h - py), landscape: false, safeArea: s, corner: corner)
         }
     }
 
-    /// True when the point lies inside the screen's rounded outline (corner radius
-    /// `Tuning.cornerRadius`), i.e. not in a cut-off corner.
+    public var short: Bool { safeArea.h < Layout.shortHeight }
+    /// The part of the panel you can read and press.
+    public var panelContent: Rect { panel.intersection(safeArea) }
+    /// The part of the board the system leaves clear.
+    public var boardContent: Rect { board.intersection(safeArea) }
+    /// The safe area without the columns the rounded corners cut into: anything in here is
+    /// clear of them at any height.
+    public var clear: Rect {
+        let x0 = max(safeArea.x, corner), x1 = min(safeArea.maxX, width - corner)
+        return Rect(x0, safeArea.y, max(1, x1 - x0), safeArea.h)
+    }
+
+    /// A w x h rectangle centred on the screen, nudged to keep `margin` inside the safe area.
+    public func centred(_ w: Int, _ h: Int, margin: Int = 4) -> Rect {
+        let s = safeArea
+        let x = max(s.x + margin, min(s.maxX - margin - w, (width - w) / 2))
+        let y = max(s.y + margin, min(s.maxY - margin - h, (height - h) / 2))
+        return Rect(x, y, w, h)
+    }
+
+    /// True when the point lies inside the screen's rounded outline (corner radius `corner`),
+    /// i.e. not in a cut-off corner.
     public func onScreen(_ x: Int, _ y: Int) -> Bool {
-        let r = Tuning.cornerRadius
+        let r = corner
         guard x >= 0, y >= 0, x <= width, y <= height else { return false }
         let cx = x < r ? r : (x > width - r ? width - r : x)
         let cy = y < r ? r : (y > height - r ? height - r : y)
@@ -179,9 +218,11 @@ public struct Layout: Equatable, Sendable {
         return dx * dx + dy * dy <= r * r
     }
 
-    /// True when the whole rectangle is clear of the rounded corners.
+    /// True when the whole rectangle is inside the safe area and clear of the rounded corners.
     public func safe(_ rc: Rect) -> Bool {
-        onScreen(rc.x, rc.y) && onScreen(rc.maxX, rc.y) && onScreen(rc.x, rc.maxY) && onScreen(rc.maxX, rc.maxY)
+        let s = safeArea
+        guard rc.x >= s.x, rc.y >= s.y, rc.maxX <= s.maxX, rc.maxY <= s.maxY else { return false }
+        return onScreen(rc.x, rc.y) && onScreen(rc.maxX, rc.y) && onScreen(rc.x, rc.maxY) && onScreen(rc.maxX, rc.maxY)
     }
 }
 
@@ -201,7 +242,7 @@ public struct LaunchDrag: Equatable, Sendable {
     public static let minPull = 6
 }
 
-enum DragMode: Sendable, Equatable { case none, pan, tree, launch, ignore }
+enum DragMode: Sendable, Equatable { case none, pan, tree, launch, scroll, ignore }
 
 public enum Gesture: Equatable, Sendable {
     /// A first finger went down (it may yet become a tap, long-press or drag).
@@ -334,12 +375,17 @@ extension Game {
         case .drag(let from, let to):
             ui.pressOnOpen = nil
             if ui.dragMode == .none {
-                // Decided once, where the finger went down.
+                // Decided once, where the finger went down. Anywhere on a scrolling card's
+                // body scrolls it, buttons and rows included.
                 let h = hit(at: from)?.action ?? .none
-                switch h {
-                case .board: ui.dragMode = ui.launch != nil ? .launch : .pan
-                case .tree, .selectSkill: ui.dragMode = .tree
-                default: ui.dragMode = .ignore
+                if let a = ui.scrollArea, a.contains(from) {
+                    ui.dragMode = .scroll
+                } else {
+                    switch h {
+                    case .board: ui.dragMode = ui.launch != nil ? .launch : .pan
+                    case .tree, .selectSkill: ui.dragMode = .tree
+                    default: ui.dragMode = .ignore
+                    }
                 }
                 ui.tooltip = nil
             }
@@ -347,6 +393,7 @@ extension Game {
             case .pan: ui.camera.pan(Double(to.x - from.x), Double(to.y - from.y))
             case .tree: ui.treeCamera.pan(Double(to.x - from.x), Double(to.y - from.y))
             case .launch: ui.launch?.to = to
+            case .scroll: ui.scroll = max(0, min(ui.scrollMax, ui.scroll - (to.y - from.y)))
             case .none, .ignore: break
             }
         case .release:
@@ -415,8 +462,8 @@ extension Game {
         case .play:
             ui.screen = .game
             events.append(.tap)
-        case .howTo: ui.screen = .howTo; events.append(.tap)
-        case .settings: ui.screen = .settings; ui.confirmResetUntil = -1; events.append(.tap)
+        case .howTo: ui.screen = .howTo; ui.scroll = 0; events.append(.tap)
+        case .settings: ui.screen = .settings; ui.scroll = 0; ui.confirmResetUntil = -1; events.append(.tap)
         case .backToMenu: ui.screen = .menu; events.append(.tap)
         case .setting(let i):
             switch i {

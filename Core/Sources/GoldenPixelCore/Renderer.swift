@@ -17,15 +17,40 @@ public final class Renderer {
     public private(set) var canvas: Canvas
     var boardCanvas: Canvas
     var hits: [Hit] = []
+    /// What the system covers and how round the screen is (`Display`); the layout keeps
+    /// everything you read or press clear of both.
+    public private(set) var insets: Insets
+    public private(set) var corner: Int
+    /// The layout of the frame being drawn.
+    var layout: Layout
+    /// While a scrolling card's body is being drawn: the part of it on screen. Hit regions are
+    /// cut to it.
+    var hitClip: Rect?
+    /// The scrolling card body being drawn: its view and the full height of its content.
+    var scrolling: (view: Rect, total: Int)?
 
-    public init(width: Int = Tuning.canvasWidth, height: Int = Tuning.canvasHeight) {
+    public init(width: Int = Tuning.canvasWidth, height: Int = Tuning.canvasHeight, insets: Insets = .zero, corner: Int = Tuning.cornerRadius) {
         canvas = Canvas(width: width, height: height)
         boardCanvas = Canvas(width: 1, height: 1)
+        self.insets = insets
+        self.corner = corner
+        layout = Layout.make(width: width, height: height, insets: insets, corner: corner)
     }
 
-    public func resize(width: Int, height: Int) {
+    /// A renderer for a screen as `Display.fit` laid it out.
+    public convenience init(display d: Display) {
+        self.init(width: d.width, height: d.height, insets: d.insets, corner: d.corner)
+    }
+
+    public func resize(width: Int, height: Int, insets: Insets = .zero, corner: Int = Tuning.cornerRadius) {
+        self.insets = insets
+        self.corner = corner
         guard width != canvas.width || height != canvas.height else { return }
         canvas = Canvas(width: max(1, width), height: max(1, height))
+    }
+
+    public func resize(to d: Display) {
+        resize(width: d.width, height: d.height, insets: d.insets, corner: d.corner)
     }
 
     public func render(_ g: Game) {
@@ -33,8 +58,13 @@ public final class Renderer {
         c.clear()
         c.clip = nil
         hits = []
-        let layout = Layout.make(width: c.width, height: c.height)
+        hitClip = nil
+        scrolling = nil
+        layout = Layout.make(width: c.width, height: c.height, insets: insets, corner: corner)
+        let layout = layout
         g.ui.layout = layout
+        g.ui.scrollArea = nil
+        g.ui.scrollMax = 0
 
         switch g.ui.screen {
         case .menu: drawMenu(g)
@@ -56,7 +86,23 @@ public final class Renderer {
         g.ui.hits = hits
     }
 
-    func hit(_ r: Rect, _ a: Action, _ info: [String] = []) { hits.append(Hit(rect: r, action: a, info: info)) }
+    func hit(_ r: Rect, _ a: Action, _ info: [String] = []) {
+        var r = r
+        if let k = hitClip {
+            // In a scrolling card: only what shows can be pressed, and a control scrolled
+            // partly out of view only while a touch-sized piece of it still shows.
+            let v = r.intersection(k)
+            guard v.w >= min(r.w, Tuning.minTouch), v.h >= min(r.h, Tuning.minTouch) else { return }
+            r = v
+        }
+        hits.append(Hit(rect: r, action: a, info: info))
+    }
+
+    /// The spacing step to draw a card at: the first of 0...last (0 is the roomy spacing the
+    /// Duo gets, each step after it tighter) whose height fits, or the tightest.
+    func fitStep(_ last: Int, into avail: Int, _ height: (Int) -> Int) -> Int {
+        (0..<last).first { height($0) <= avail } ?? last
+    }
 
     /// The button kinds. Every one is flat (one fill, at most a 1-px keyline of its own) with
     /// 1-px notched corners; pressed, the fill steps up and the content drops one pixel.
@@ -144,6 +190,7 @@ public final class Renderer {
 
     func drawBanners(_ g: Game, _ L: Layout) {
         let c = canvas
+        let B = L.boardContent
         var y = L.board.y + L.board.h / 2 - 20
         for b in g.banners.prefix(3) {
             let scale = b.big ? 3 : 1
@@ -151,7 +198,7 @@ public final class Renderer {
             // Banners blink in and out rather than fading.
             if b.life < 0.3 && Int(b.life * 20) % 2 == 0 { y += h + 8; continue }
             let w = PixelFont.measure(b.text, scale: scale)
-            let x = L.board.x + (L.board.w - w) / 2
+            let x = B.x + (B.w - w) / 2
             c.fill(x - 4, y - 4, w + 8, h + 8, Palette.black)
             c.text(b.text, x, y, b.color.glowing(b.big ? 255 : 120), scale: scale)
             y += h + 10
@@ -159,14 +206,15 @@ public final class Renderer {
     }
 
     func drawTooltip(_ t: Tooltip) {
-        let c = canvas
         let w = (t.lines.map { PixelFont.measure($0) }.max() ?? 0) + 10
         let h = t.lines.count * PixelFont.lineHeight + 7
         var x = t.at.x - w / 2, y = t.at.y - h - 10
-        if y < 4 { y = t.at.y + 12 }
-        x = max(Tuning.cornerRadius, min(c.width - w - Tuning.cornerRadius, x))
-        y = max(4, min(c.height - h - 4, y))
+        if y < layout.safeArea.y + 4 { y = t.at.y + 12 }
+        let K = layout.clear
+        x = max(K.x, min(K.maxX - w, x))
+        y = max(K.y + 4, min(K.maxY - h - 4, y))
         let r = Rect(x, y, w, h)
+        let c = canvas
         c.fill(r, Palette.panel3)
         for (j, line) in t.lines.enumerated() { c.text(line, x + 5, y + 5 + j * PixelFont.lineHeight, j == 0 ? Palette.white : Palette.text2) }
     }

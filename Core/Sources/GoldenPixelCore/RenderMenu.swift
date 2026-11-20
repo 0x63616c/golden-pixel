@@ -60,17 +60,20 @@ extension Renderer {
         return (ws.reduce(0, +) + max(0, ws.count - 1)) * line.unit
     }
 
-    var logoSize: (w: Int, h: Int) {
+    var logoSize: (w: Int, h: Int) { logoSize(lineGap: Renderer.logoLineGap) }
+
+    /// The wordmark's size with `lineGap` art pixels between its two lines.
+    func logoSize(lineGap: Int) -> (w: Int, h: Int) {
         let lines = Renderer.logoLines
         let w = lines.map { logoWidth($0) }.max() ?? 0
-        let h = lines.map { 8 * $0.unit }.reduce(0, +) + (lines.count - 1) * Renderer.logoLineGap
+        let h = lines.map { 8 * $0.unit }.reduce(0, +) + (lines.count - 1) * lineGap
         return (w, h)
     }
 
     /// Draws the wordmark with its top edge at y, centred on cx. A 2-px black keyline hugs the
     /// letters (not a box), so the moving field never touches them, and the golden pixel
     /// breathes a dithered halo.
-    func drawLogo(_ g: Game, cx: Int, y: Int) {
+    func drawLogo(_ g: Game, cx: Int, y: Int, lineGap: Int = Renderer.logoLineGap) {
         let c = canvas, o = Renderer.logoOutline
         var placed: [(Sprite, Int, Int, Int, Pixel)] = []
         var ly = y
@@ -81,7 +84,7 @@ extension Renderer {
                 placed.append((s, x, ly, line.unit, line.colour))
                 x += (s.width + 1) * line.unit
             }
-            ly += 8 * line.unit + Renderer.logoLineGap
+            ly += 8 * line.unit + lineGap
         }
         // The golden pixel twinkles: four short diagonal rays from its corners, growing and
         // shrinking in whole pixels.
@@ -132,17 +135,31 @@ extension Renderer {
         let p = g.progress
         let fresh = p.level == 1 && p.levelTime < 1 && p.totalEarnings == 0
         // The logo, then one hero button and a pair below it, all one width: the logo's.
-        let logo = logoSize
-        let bw = logo.w, heroH = 35, rowH = 27, gap = 7, logoGap = 26
-        let stackH = logo.h + logoGap + heroH + gap + rowH
-        let x0 = (c.width - bw) / 2
-        var y = (c.height - stackH) / 2
-        let tag = buildTagRect(g.buildLabel, cx: c.width / 2, y: c.height - Renderer.buildTagBottom - PixelFont.capHeight)
+        // Gaps and button heights, roomiest first: a short screen gets the first set that fits
+        // between the top of the safe area and the build tag (or the bottom, with no tag).
+        let lineGaps = [Renderer.logoLineGap, 12, 12, 6, 4], logoGaps = [26, 14, 10, 6, 6]
+        let heroes = [35, 31, 29, 27, 26], rows = [27, 25, 23, 22, 22], gaps = [7, 6, 5, 4, 4]
+        func height(_ s: Int) -> Int { logoSize(lineGap: lineGaps[s]).h + logoGaps[s] + heroes[s] + gaps[s] + rows[s] }
+        let S = layout.safeArea, top = S.y + 8
+        var tag = buildTagRect(g.buildLabel, cx: c.width / 2, y: S.maxY - Renderer.buildTagBottom - PixelFont.capHeight)
+        var bottom = tag.map { $0.y - 6 } ?? S.maxY - 8
+        var s = fitStep(heroes.count - 1, into: bottom - top, height)
+        if tag != nil, height(s) > bottom - top {
+            // No room for both even at the tightest: the tag is on the settings card too.
+            tag = nil
+            bottom = S.maxY - 8
+            s = fitStep(heroes.count - 1, into: bottom - top, height)
+        }
+        let logo = logoSize(lineGap: lineGaps[s])
+        let bw = logo.w, heroH = heroes[s], rowH = rows[s], gap = gaps[s], logoGap = logoGaps[s]
+        let stackH = height(s)
+        let x0 = layout.centred(bw, stackH).x
+        var y = max(top, min(bottom - stackH, (c.height - stackH) / 2))
         drawMenuBackground(g, calm: [Rect(x0 - 6, y - 6, bw + 12, stackH + 12)] + (tag.map { [$0] } ?? []))
         hit(Rect(0, 0, c.width, c.height), .none)
         if let tag { drawBuildTag(g.buildLabel, tag, keyline: true) }
 
-        drawLogo(g, cx: c.width / 2, y: y)
+        drawLogo(g, cx: x0 + bw / 2, y: y, lineGap: lineGaps[s])
         y += logo.h + logoGap
 
         let hero = fresh ? "PLAY" : "CONTINUE LV \(p.level)"
@@ -182,21 +199,63 @@ extension Renderer {
 
     // MARK: - Cards
 
+    /// The least room between a menu card and the edge of the safe area.
+    static let cardMargin = 2
+
+    /// The widest a menu card may be: `width`, or what the safe area has room for.
+    func cardWidth(_ width: Int) -> Int { min(width, layout.safeArea.w - 16) }
+
+    /// Padding around a menu card's content, and the height of everything but the content
+    /// (header, keyline, padding). Both tighten on a short screen.
+    var cardPad: Int { layout.short ? 10 : 16 }
+    var cardHeader: Int { layout.short ? 6 + 23 + 6 : 8 + 27 + 9 }
+    var cardChrome: Int { cardHeader + 1 + 2 * cardPad }
+
     /// A centred card on the menu background: a header with a back button and the title, a
     /// keyline under it, then `contentH` pixels of content. Returns the content rectangle.
-    func menuCard(_ g: Game, title: String, width w: Int, contentH: Int) -> Rect {
-        let c = canvas
-        let pad = 16, header = 8 + 27 + 9
-        let h = min(c.height - 16, header + 1 + pad + contentH + pad)
-        let card = Rect((c.width - w) / 2, (c.height - h) / 2, w, h)
+    ///
+    /// Content taller than the screen scrolls under the header: the returned rectangle is
+    /// shifted up by `ui.scroll`, drawing and hit regions are cut to the body until
+    /// `endMenuCard`, and a drag anywhere on the body scrolls (`ui.scrollArea`).
+    func menuCard(_ g: Game, title: String, width: Int, contentH: Int) -> Rect {
+        let c = canvas, L = layout
+        let pad = cardPad, header = cardHeader, back = L.short ? 23 : 27, top = L.short ? 6 : 8
+        let w = cardWidth(width)
+        let full = header + 1 + pad + contentH + pad
+        let h = min(L.safeArea.h - 2 * Renderer.cardMargin, full)
+        let card = L.centred(w, h, margin: Renderer.cardMargin)
         drawMenuBackground(g, calm: [card])
         hit(Rect(0, 0, c.width, c.height), .none)
         box(card, Palette.panel1, edge: Palette.panel3, notch: 2)
         hit(card, .none)
-        button(g, Rect(card.x + 8, card.y + 8, 27, 27), "", .backToMenu, icon: Sprites.back, tintIcon: true)
-        centred(title, c.width / 2, card.y + 8 + (27 - 14) / 2, Palette.white, scale: 2)
+        button(g, Rect(card.x + top, card.y + top, back, back), "", .backToMenu, icon: Sprites.back, tintIcon: true)
+        centred(title, card.x + w / 2, card.y + top + (back - 14) / 2, Palette.white, scale: 2)
         c.hline(card.x + 8, card.maxX - 9, card.y + header, Palette.panel3)
-        return Rect(card.x + pad + 4, card.y + header + 1 + pad, w - 2 * (pad + 4), contentH)
+        let over = full - h
+        g.ui.scrollMax = max(0, over)
+        g.ui.scroll = max(0, min(g.ui.scrollMax, g.ui.scroll))
+        if over > 0 {
+            // The body: under the header's keyline, inside the card's own keyline.
+            let view = Rect(card.x + 2, card.y + header + 1, w - 4, h - header - 1 - 2)
+            g.ui.scrollArea = view
+            scrolling = (view, pad + contentH + pad)
+            c.clip = view
+            hitClip = view
+        }
+        return Rect(card.x + pad + 4, card.y + header + 1 + pad - g.ui.scroll, w - 2 * (pad + 4), contentH)
+    }
+
+    /// Ends a menu card's content. A scrolling card gets a flat thumb on its right edge: as
+    /// tall as the share of the content that shows, as far down as the scroll.
+    func endMenuCard(_ g: Game) {
+        let c = canvas
+        c.clip = nil
+        hitClip = nil
+        guard let (view, total) = scrolling, g.ui.scrollMax > 0 else { return }
+        scrolling = nil
+        let th = max(8, view.h * view.h / max(1, total))
+        let ty = view.y + (view.h - th) * g.ui.scroll / g.ui.scrollMax
+        c.fill(view.maxX - 4, ty, 2, th, Palette.border)
     }
 
     /// A small square chip holding a 7x7 icon, so a column of icons lines up as one rhythm.
@@ -218,8 +277,8 @@ extension Renderer {
 
     func drawHowTo(_ g: Game) {
         let c = canvas
-        let w = 391, chip = 17, textX = chip + 10, rowGap = 7
-        let textW = w - 40 - textX
+        let w = cardWidth(391), chip = 17, textX = chip + 10, rowGap = 7
+        let textW = w - 2 * (cardPad + 4) - textX
         // "\n" marks a chosen break, so lines come out balanced rather than with an orphan.
         let wrapped = Renderer.howToRows.map { $0.1.split(separator: "\n").flatMap { wrap(String($0), width: textW) } }
         func rowH(_ lines: Int) -> Int { max(chip, (lines - 1) * PixelFont.lineHeight + PixelFont.capHeight + 10) }
@@ -238,16 +297,23 @@ extension Renderer {
             }
             y += h + rowGap
         }
+        endMenuCard(g)
     }
 
     func drawSettings(_ g: Game) {
         let c = canvas
         let s = g.progress.settings
         let rows: [(Sprite, String, Bool)] = [(Sprites.sound, "SOUND", s.sound), (Sprites.haptic, "HAPTICS", s.haptics), (Sprites.glowIcon, "GLOW", s.glow)]
-        let rowH = 31, rowGap = 5, section = 18, bh = 27
-        let tagGap = 14
-        let tagH = g.buildLabel.isEmpty ? 0 : tagGap + PixelFont.capHeight
-        let contentH = rows.count * rowH + (rows.count - 1) * rowGap + section + bh + 9 + PixelFont.capHeight + tagH
+        // Row and button heights and the gaps, as designed and tight: tight when the card
+        // would not fit the screen otherwise.
+        let tagged = !g.buildLabel.isEmpty
+        func content(_ t: Int) -> Int {
+            rows.count * [31, 22][t] + (rows.count - 1) * [5, 2][t] + [18, 6][t] + [27, 23][t] + [9, 4][t] + PixelFont.capHeight
+                + (tagged ? [14, 6][t] + PixelFont.capHeight : 0)
+        }
+        let t = fitStep(1, into: layout.safeArea.h - 2 * Renderer.cardMargin) { cardChrome + content($0) }
+        let rowH = [31, 22][t], rowGap = [5, 2][t], section = [18, 6][t], bh = [27, 23][t], noteGap = [9, 4][t], tagGap = [14, 6][t]
+        let contentH = content(t)
         let r = menuCard(g, title: "SETTINGS", width: 300, contentH: contentH)
         var y = r.y
         for (j, (icon, name, on)) in rows.enumerated() {
@@ -255,10 +321,10 @@ extension Renderer {
             let pressed = g.isPressed(.setting(j))
             box(row, pressed ? Palette.panel3 : Palette.panel2)
             let ink = on ? Palette.white : Palette.text2
-            c.sprite(icon, row.x + 12, row.y + 12, tint: ink)
-            c.text(name, row.x + 12 + 7 + 9, row.y + 12, ink)
+            c.sprite(icon, row.x + 12, row.y + (rowH - 7) / 2, tint: ink)
+            c.text(name, row.x + 12 + 7 + 9, row.y + (rowH - 7) / 2, ink)
             // A flat switch: a notched track and a square knob, lit when on.
-            let track = Rect(row.maxX - 12 - 29, row.y + 8, 29, 15)
+            let track = Rect(row.maxX - 12 - 29, row.y + (rowH - 15) / 2, 29, 15)
             if on {
                 box(track, Palette.accent)
                 box(Rect(track.maxX - 13, track.y + 2, 11, 11), Palette.white)
@@ -273,11 +339,12 @@ extension Renderer {
         let confirming = g.time < g.ui.confirmResetUntil
         button(g, Rect(r.x, y, r.w, bh), confirming ? "TAP AGAIN TO WIPE EVERYTHING" : "RESET PROGRESS", .resetProgress,
                style: confirming ? .danger : .secondary, icon: Sprites.restart, tintIcon: true)
-        centred("Wipes levels, stars and coins.", c.width / 2, y + bh + 9, Palette.muted)
+        centred("Wipes levels, stars and coins.", r.x + r.w / 2, y + bh + noteGap, Palette.muted)
         // Which build this is, last and quietest, so a tester can match it to TestFlight.
-        if let tag = buildTagRect(g.buildLabel, cx: c.width / 2, y: y + bh + 9 + PixelFont.capHeight + tagGap) {
+        if let tag = buildTagRect(g.buildLabel, cx: r.x + r.w / 2, y: y + bh + noteGap + PixelFont.capHeight + tagGap) {
             drawBuildTag(g.buildLabel, tag)
         }
+        endMenuCard(g)
     }
 }
 

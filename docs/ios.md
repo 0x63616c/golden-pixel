@@ -29,8 +29,38 @@ the `duo-screenshots` artifact.
   glass is iOS's own resample. Everything the app controls is exact (the grid check proves it
   on the rendered image and on simulator screenshots).
 
-Other phones get the largest whole scale that fits 334 art pixels on the short side, and
-letterbox.
+## Other phones: same pixels, smaller canvas
+
+One art pixel is **2 points on every screen** (`Display.fit` in the core; 6 device pixels at
+@3x), so the game is the same physical size on a phone as on the Duo. A smaller screen shows
+a smaller canvas, never smaller pixels:
+
+| | Rendered | Canvas (art px) | Safe area (pt) | Clear canvas |
+| --- | --- | --- | --- | --- |
+| iPhone Duo (inner) | 2853 x 2007 | 475 x 334 | bottom 34 | 475 x 317 |
+| iPhone 18 Pro | 2622 x 1206 | 437 x 201 | left 62, right 62, bottom 20 | 375 x 191 |
+| iPhone 18 Pro Max | 2868 x 1320 | 478 x 220 | left 62, right 62, bottom 20 | 416 x 210 |
+| iPhone SE | 1334 x 750 (@2x, scale 4) | 333 x 187 | none | 333 x 187 |
+| iPhone 13 mini | 2340 x 1080 (2.88 px per pt) | 390 x 180 | left 50, right 50, bottom 20 | 342 x 170 |
+
+All measured on the iOS 27.2 simulators (`just compare` writes each one's safe area). The
+last two stand for the narrowest and the shortest canvas iOS 26 runs on. They are `Device.all` in
+`Display.swift`, and `UISafetyTests` lays every scene out on each of them.
+
+- The system's safe area comes in with the canvas (`PixelView` passes it to the renderer) and
+  ends up in `Layout.safeArea`. The board and the panel's background run to the screen's
+  edges, under the Dynamic Island's side and the home indicator. Everything you read or
+  press stays inside the safe area and out of the rounded corners (`Layout.safe`).
+- A safe area under `Layout.shortHeight` (240) art pixels is "short": the panel's header
+  tightens, cards step down through tighter spacing until they fit, and the skill card
+  shrinks its tile.
+- The panel gives the ball rows whatever height is left under its header: one column of full
+  rows while each stays touch-sized (22 art px), otherwise two columns of tiles (the ball, its
+  price over the count). All seven types fit on every device without scrolling.
+- A menu card taller than the screen (how to play on any phone, settings on the smallest)
+  scrolls under its header: drag anywhere on its body.
+- Only a screen that cannot give 300 x 160 clear art pixels at 2 points per pixel gets a
+  smaller scale.
 
 ## Run it
 
@@ -41,13 +71,13 @@ SCENE=mid just ios-sim       # a staged scene (see Scenes.names: menu, start, mi
 just ios-device              # a plugged-in phone (Xcode signed in to team X9E4HG27NK)
 ```
 
-## Other phones: compare the layouts
+## Compare the layouts
 
 ```sh
 just compare                         # Duo, iPhone 18 Pro and iPhone 18 Pro Max -> build/compare
-just compare build/compare iphone    # only some of them (duo, iphone, max)
+just compare build/compare se mini   # any of duo, iphone, max, se, mini
 just ios-sim max                     # play on one of them (SCENE=mid for a staged scene)
-python3 tools/gridcheck.py --scale 3 build/compare/iphone/*.png   # the phones run at art scale 3 today
+swift run -c release gp-render all build/phone --device iphone   # no simulator: duo, iphone, max, se, mini
 ```
 
 `just compare` screenshots every staged scene on each simulator (`build/compare/<sim>/`) and
@@ -59,8 +89,13 @@ gives. The screen's rounded corners are cut as on glass (from the simulator's ma
 (`<sim>.safe-area.json`, written by `PixelView` for staged scenes): outside it sit the Dynamic
 Island and the home indicator. Needs Pillow; with `uv` installed it is fetched for the run.
 
-For a quick look without a simulator, render any canvas size from the core:
-`swift run -c release gp-render late build/phone --size 437x201` (an iPhone 18 Pro at art scale 6).
+It ends with a grid check of every screenshot at that phone's art scale. The corners and the
+safe-area insets are skipped: the screen's mask, the Dynamic Island and the home indicator
+are the system's pixels, not the game's. The mini is skipped whole: at 2.88 pixels per point
+iOS resamples the frame, so there is no whole-pixel grid on its panel (as on the Duo's glass).
+
+For a quick look without a simulator, `gp-render --device <name>` renders any of
+`Device.all` (the canvas, safe area and scale that phone gets) straight from the core.
 
 ## App icon
 

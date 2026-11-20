@@ -11,7 +11,8 @@
 #   ios/ios.sh appstore [raw-dir]      App Store screenshots: STORE_SCENES on duo, iphone and max,
 #                                      raw captures in raw-dir (build/appstore), deliver-ready
 #                                      files in fastlane/screenshots/en-US (tools/appstore.py shots)
-# Simulators: duo = iPhone Duo (the target), iphone = iPhone 18 Pro, max = iPhone 18 Pro Max.
+# Simulators: duo = iPhone Duo (the target), iphone = iPhone 18 Pro, max = iPhone 18 Pro Max;
+# and the smallest screens, se = iPhone SE (3rd generation), mini = iPhone 13 mini.
 # Pick a specific phone with DEVICE=<name or UDID> (see `xcrun devicectl list devices`).
 set -euo pipefail
 
@@ -22,7 +23,7 @@ BUNDLE_ID=co.worldwidewebb.goldenpixel
 SIM_NAME="GP Duo"
 SIM_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-Duo
 # The staged scenes every screenshot run captures (see Scenes.names in the core).
-SHOT_SCENES=(menu start mid zoom zoomout sheet launch pause late tree gold howto settings)
+SHOT_SCENES=(menu start mid zoom zoomout sheet launch pause late full tree gold howto settings)
 # The App Store screenshots, in listing order (the first one or two carry the page; at most 10).
 # The appstore skill keeps this list current; see docs/release.md for the shot plan.
 STORE_SCENES=(hero aim goldhunt tree goldbreak sheet menu)
@@ -37,7 +38,9 @@ use_sim() {
     duo) SIM_NAME="GP Duo"; SIM_TYPE=$types.iPhone-Duo ;;
     iphone) SIM_NAME="GP iPhone"; SIM_TYPE=$types.iPhone-18-Pro ;;
     max) SIM_NAME="GP Max"; SIM_TYPE=$types.iPhone-18-Pro-Max ;;
-    *) die "Unknown simulator '$1' (duo, iphone or max)" ;;
+    se) SIM_NAME="GP SE"; SIM_TYPE=$types.iPhone-SE-3rd-generation ;;
+    mini) SIM_NAME="GP mini"; SIM_TYPE=$types.iPhone-13-mini ;;
+    *) die "Unknown simulator '$1' (duo, iphone, max, se or mini)" ;;
   esac
 }
 
@@ -175,6 +178,15 @@ compare() {
   local py=(python3)
   command -v uv >/dev/null && py=(uv run --quiet --with pillow python3)
   "${py[@]}" ../tools/compare.py "$out" "${sims[@]}"
+  # Grid check at each phone's own scale (2 points per art pixel; the safe-area file carries
+  # the points). The corners (the screen's mask) and the system's insets (the island, the
+  # home indicator) are not the game's pixels.
+  for s in "${sims[@]}"; do
+    say "Grid check: $s"
+    local skip=()
+    [[ -f "$out/$s.safe-area.json" ]] && skip=(--safe-area "$out/$s.safe-area.json")
+    "${py[@]}" ../tools/gridcheck.py --corner 120 ${skip[@]+"${skip[@]}"} "$out/$s"/*.png
+  done
 }
 
 # App Store screenshots: STORE_SCENES on the Duo (inner screen; optional until April 2027, adds

@@ -1,9 +1,11 @@
 // gp-render: renders game scenes to PNG without a device.
-//   swift run gp-render <scene> <out-dir> [--scale N] [--size WxH] [--frames N] [--bloom]
-// Scenes: title, start, early, mid, late, skills, upgrades, gold, portrait, zoom, all; or icon
+//   swift run gp-render <scene> <out-dir> [--device NAME] [--scale N] [--size WxH] [--frames N] [--bloom]
+// Scenes: see Scenes.names (menu, start, mid, late, tree, sheet, ...), all; or icon
 // (the flat 1024 px PNGs), or icon-layers (one SVG per Icon.Layer, for ios/AppIcon.icon/Assets).
 // Default: the Duo canvas (475x334) at scale 6 = the device's own pixels, bloom off, so the
 // output is pixel-exact (every 6x6 block one colour; tools/gridcheck.py verifies).
+// --device duo|iphone|max|se|mini renders that screen's canvas with its safe area, at its own
+// scale (see Device in the core): what the app draws there, without a simulator.
 import Foundation
 import GoldenPixelCore
 
@@ -14,7 +16,15 @@ func option(_ name: String) -> String? {
 }
 let bloom = args.contains("--bloom")
 args.removeAll { $0 == "--bloom" }
-let scale = Int(option("--scale") ?? "\(Tuning.artScale)") ?? Tuning.artScale
+var display: Display?
+if let name = option("--device") {
+    guard let d = Device.named(name) else {
+        print("unknown device \(name): one of \(Device.all.map(\.name).joined(separator: ", "))")
+        exit(1)
+    }
+    display = d.display
+}
+let scale = Int(option("--scale") ?? "") ?? display?.scale ?? Tuning.artScale
 let size = (option("--size") ?? "\(Tuning.canvasWidth)x\(Tuning.canvasHeight)").split(separator: "x").compactMap { Int($0) }
 let frames = Int(option("--frames") ?? "0") ?? 0
 let scene = args.first ?? "all"
@@ -37,7 +47,7 @@ if scene == "icon-layers" {
 let scenes = scene == "all" ? Scenes.names : [scene]
 for name in scenes {
     let w = name == "portrait" ? size[1] : size[0], h = name == "portrait" ? size[0] : size[1]
-    let renderer = Renderer(width: w, height: h)
+    let renderer = display.map { Renderer(display: $0) } ?? Renderer(width: w, height: h)
     let game = Scenes.make(name)
     if frames > 0 {
         let dir = out.appendingPathComponent(name)

@@ -168,6 +168,11 @@ public struct Rect: Equatable, Sendable {
     public var maxX: Int { x + w }
     public var maxY: Int { y + h }
     public func inset(_ d: Int) -> Rect { Rect(x + d, y + d, w - 2 * d, h - 2 * d) }
+    /// The part of this rectangle inside `o` (zero-sized when they don't meet).
+    public func intersection(_ o: Rect) -> Rect {
+        let x0 = max(x, o.x), y0 = max(y, o.y)
+        return Rect(x0, y0, max(0, min(maxX, o.maxX) - x0), max(0, min(maxY, o.maxY) - y0))
+    }
 }
 
 public struct Point: Equatable, Sendable {

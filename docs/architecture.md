@@ -3,7 +3,7 @@
 ```
 touches ──► PointerTracker ──► Gesture ──► Game.handle ──► Game (rules, sim, camera)
                                                             │
-CADisplayLink (MTKView) ──► Game.update(dt) ──► Renderer.render ──► Canvas (475x334 RGBA)
+CADisplayLink (MTKView) ──► Game.update(dt) ──► Renderer.render ──► Canvas (475x334 RGBA on the Duo)
                                                                      │ one texture upload
                                             Metal: glow pass (optional) + present pass
                                             (exact texel reads, whole scale, centred)
