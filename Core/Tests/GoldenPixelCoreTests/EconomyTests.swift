@@ -26,13 +26,6 @@ final class EconomyTests: XCTestCase {
         XCTAssertEqual(Economy.ballCost(.basic, owned: 5, swarm: true), (Economy.ballCost(.basic, owned: 5) * 0.6).rounded(), accuracy: 1)
     }
 
-    func testOfflineEarningsAreCapped() {
-        let m = Mods()
-        XCTAssertEqual(Economy.offlineEarnings(incomePerSecond: 10, elapsed: 30, mods: m), 0)
-        let day = Economy.offlineEarnings(incomePerSecond: 10, elapsed: 86_400, mods: m)
-        XCTAssertEqual(day, 10 * Tuning.offlineCapSeconds * m.offline, accuracy: 1e-6)
-    }
-
     func testShardValuesSplitTheTreeEvenly() {
         let v = Economy.shardValues(count: 7, total: 100)
         XCTAssertEqual(v.reduce(0, +), 100)

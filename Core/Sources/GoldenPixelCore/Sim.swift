@@ -21,13 +21,6 @@ extension Game {
         stepBalls(dt)
         stepEffects(dt)
         stepSonar(dt)
-
-        incomeClock += dt
-        if incomeClock >= 1 {
-            progress.incomeRate = progress.incomeRate * 0.95 + (incomeWindow / incomeClock) * 0.05
-            incomeWindow = 0
-            incomeClock = 0
-        }
     }
 
     // MARK: Balls

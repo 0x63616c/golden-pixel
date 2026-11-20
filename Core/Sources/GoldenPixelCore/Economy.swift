@@ -72,11 +72,6 @@ public enum Economy {
         return v.map { $0 + 1 }
     }
 
-    /// Offline earnings for `elapsed` seconds away, capped.
-    public static func offlineEarnings(incomePerSecond: Double, elapsed: Double, mods: Mods) -> Double {
-        guard elapsed > 60, incomePerSecond > 0 else { return 0 }
-        return incomePerSecond * min(elapsed, Tuning.offlineCapSeconds) * mods.offline
-    }
 }
 
 /// What skills and stars add up to.
@@ -89,7 +84,6 @@ public struct Mods: Equatable, Sendable {
     public var radar = 0
     public var lantern = 0
     public var sonar = 0
-    public var offline = 0.1
     public var unlocked: Set<BallKind> = [.basic]
 
     public var revealRadius: Int { Tuning.revealRadius + lantern }
@@ -111,7 +105,6 @@ public struct Mods: Equatable, Sendable {
             case .radar: m.radar = r
             case .lantern: m.lantern = r
             case .sonar: m.sonar = r
-            case .offline(let p): m.offline += p * rd
             case .unlock(let k): m.unlocked.insert(k)
             case .cash, .ballStat, .ballSpec: break
             }

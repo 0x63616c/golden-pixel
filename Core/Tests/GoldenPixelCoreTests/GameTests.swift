@@ -109,11 +109,11 @@ final class GameTests: XCTestCase {
 
     func testSaveRoundTripResumesTheBoard() {
         let g = Scenes.make("mid")
-        let data = SaveCodec.encode(g.saveFile(now: 1000))
+        let data = SaveCodec.encode(g.saveFile())
         let s = SaveCodec.decode(data)!
         XCTAssertEqual(s.version, SaveFile.currentVersion)
         let g2 = Game()
-        g2.load(s, now: 1000)
+        g2.load(s)
         XCTAssertEqual(g2.progress, g.progress)
         XCTAssertEqual(g2.board.kind, g.board.kind)
         XCTAssertEqual(g2.board.revealed, g.board.revealed)
@@ -126,12 +126,17 @@ final class GameTests: XCTestCase {
         XCTAssertNil(SaveCodec.decode(Data("garbage".utf8)))
     }
 
-    func testOfflineEarningsOnLoad() {
-        var p = Progress(); p.incomeRate = 5; p.money = 0
+    func testClosedGameIsPausedNotPaid() {
+        // A save written hours ago (with the old offline fields) loads with the same money
+        // and no banner: nothing happens while the game is closed.
+        let json = #"{"version": 2, "savedAt": 0, "progress": {"money": 250, "level": 1, "maxLevel": 1, "stars": 0, "shards": 0, "skillRanks": {"u-basic": 1, "offline": 2}, "balls": {}, "runEarnings": 0, "totalEarnings": 0, "incomeRate": 50, "levelTime": 0, "lastClearTime": 0, "settings": {}}}"#
+        guard let s = SaveCodec.decode(Data(json.utf8)) else { return XCTFail("old save should still load") }
         let g = Game()
-        let away = g.load(SaveFile(progress: p, board: nil, savedAt: 0), now: 3600)
-        XCTAssertEqual(away, 5 * 3600 * g.mods.offline, accuracy: 1e-6)
-        XCTAssertEqual(g.progress.money, away, accuracy: 1e-6)
+        g.load(s)
+        XCTAssertEqual(g.progress.money, 250)
+        XCTAssertTrue(g.banners.isEmpty)
+        XCTAssertEqual(g.progress.shards, 2, "shards spent on the removed Idle node come back")
+        XCTAssertNil(g.progress.skillRanks["offline"])
     }
 
     func testGestures() {

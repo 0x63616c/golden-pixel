@@ -106,7 +106,7 @@ public struct BallType: Sendable {
 
 public enum SkillEffect: Sendable, Equatable {
     case damage(Double), speed(Double), money(Double), crit(Double), critDamage(Double)
-    case radar, offline(Double)
+    case radar
     /// Money straight away, per rank bought.
     case cash(Double)
     /// Fog: +1 reveal radius per rank.
@@ -160,8 +160,7 @@ public struct SkillNode: Sendable {
         .init(id: "critdmg", name: "Brutal", text: "+50% crit damage per rank", cost: 2, ranks: 3, requires: ["crit"], x: -4, y: 4, effect: .critDamage(0.5)),
         .init(id: "momentum", name: "Momentum", text: "+10% ball speed per rank", cost: 1, ranks: 5, requires: ["core"], x: 10, y: 0, effect: .speed(0.1)),
         .init(id: "greed", name: "Greed", text: "+25% coins per rank", cost: 1, ranks: 5, requires: ["core"], x: 0, y: 2, effect: .money(0.25)),
-        .init(id: "offline", name: "Idle", text: "+15% coins while away", cost: 1, ranks: 4, requires: ["greed"], x: -1, y: 4, effect: .offline(0.15)),
-        .init(id: "cash", name: "Windfall", text: "+500 coins now, per rank", cost: 1, ranks: 5, requires: ["offline"], x: -1, y: 6, effect: .cash(500)),
+        .init(id: "cash", name: "Windfall", text: "+500 coins now, per rank", cost: 1, ranks: 5, requires: ["greed"], x: -1, y: 4, effect: .cash(500)),
         .init(id: "lantern", name: "Lantern", text: "Breaks light up 1 cell further", cost: 1, ranks: 3, requires: ["greed"], x: 1, y: 4, effect: .lantern),
         .init(id: "radar", name: "Radar", text: "Boxes in the golden pixel", cost: 2, ranks: 3, requires: ["lantern"], x: 1, y: 6, effect: .radar),
         .init(id: "sonar", name: "Sonar", text: "The golden pixel pings", cost: 2, ranks: 3, requires: ["radar"], x: 1, y: 8, effect: .sonar),
@@ -276,7 +275,6 @@ public enum Tuning {
     public static let goldGlowRadius = 3.5
     public static let sonarIntervals: [Double] = [0, 18, 11, 6]
     public static let radarHintRadius: [Int] = [0, 16, 9, 4]
-    public static let offlineCapSeconds = 8.0 * 3600
     public static let levelClearPause = 2.2
     public static let maxBalls = 400
     /// Coins at the start of every level: exactly one basic ball, which you place yourself.

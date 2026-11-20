@@ -93,8 +93,8 @@ Rules (`tools/appstore.py check` enforces the mechanical ones):
 
 The description's first three lines are what shows before "more": a hook, the one-line pitch,
 and "No ads. No in-app purchases. No accounts. No tracking." Every claim must match the code
-(ball kinds: `BallKind` in `Config.swift`; levels: `Levels.swift`; offline earnings:
-`Economy.offlineEarnings`).
+(ball kinds: `BallKind` in `Config.swift`; levels: `Levels.swift`). Nothing happens while the app is closed:
+don't promise offline earnings.
 
 ### Privacy and compliance answers
 

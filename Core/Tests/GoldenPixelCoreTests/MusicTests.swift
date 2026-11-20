@@ -37,7 +37,7 @@ final class MusicTests: XCTestCase {
 
     /// A save written before the music setting existed still loads, with music on.
     func testSaveWithoutAMusicSettingStillLoads() throws {
-        let data = SaveCodec.encode(Scenes.make("mid").saveFile(now: 1000))
+        let data = SaveCodec.encode(Scenes.make("mid").saveFile())
         var json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         var progress = try XCTUnwrap(json["progress"] as? [String: Any])
         var settings = try XCTUnwrap(progress["settings"] as? [String: Any])

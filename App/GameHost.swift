@@ -31,7 +31,7 @@ final class GameHost {
             game = Scenes.make(s)
         } else {
             game = Game(seed: UInt64(Date().timeIntervalSince1970))
-            if let file = SaveStore.load() { game.load(file, now: Date().timeIntervalSince1970) }
+            if let file = SaveStore.load() { game.load(file) }
         }
         // App Store screenshots (`-GPStore YES`) show no build label.
         game.buildLabel = UserDefaults.standard.bool(forKey: "GPStore") ? "" : GameHost.buildLabel
@@ -70,7 +70,7 @@ final class GameHost {
 
     func save() {
         guard scene == nil else { return }
-        SaveStore.save(game.saveFile(now: Date().timeIntervalSince1970))
+        SaveStore.save(game.saveFile())
     }
 
     private func drainEvents() {

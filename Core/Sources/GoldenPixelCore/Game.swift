@@ -76,8 +76,6 @@ public final class Game {
     public var ui = UIState()
     var rng: RNG
     var sonarTimer = 0.0
-    var incomeWindow = 0.0
-    var incomeClock = 0.0
     var goldSeen = false
     /// The direction the last ball was aimed (a unit vector); new balls default to it.
     public var lastAim: (x: Double, y: Double) = (0, -1)
@@ -97,27 +95,25 @@ public final class Game {
 
     // MARK: - Save
 
-    public func saveFile(now: Double) -> SaveFile {
-        SaveFile(progress: progress, board: SaveCodec.snapshot(board, fresh: LevelGen.make(level: board.level)), savedAt: now)
+    public func saveFile() -> SaveFile {
+        SaveFile(progress: progress, board: SaveCodec.snapshot(board, fresh: LevelGen.make(level: board.level)))
     }
 
-    /// Restores a save and credits offline earnings. Returns the offline amount.
-    @discardableResult
-    public func load(_ s: SaveFile, now: Double) -> Double {
+    /// Restores a save. Nothing happens while the game is closed: it picks up where it stopped.
+    public func load(_ s: SaveFile) {
         progress = s.progress
         progress.level = max(1, progress.level)
+        // Shards spent on a node that no longer exists (Idle, 1 shard a rank) come back.
+        for (id, r) in progress.skillRanks where SkillNode.byID[id] == nil {
+            progress.shards += r
+            progress.skillRanks[id] = nil
+        }
         refreshMods()
         board = LevelGen.make(level: progress.level, at: time)
         if let bs = s.board { SaveCodec.restore(bs, into: board) }
         if board.kind[board.index(board.gold.x, board.gold.y)] != .gold { advanceLevel() }
         centreCamera()
         respawnBalls()
-        let away = Economy.offlineEarnings(incomePerSecond: progress.incomeRate, elapsed: now - s.savedAt, mods: mods)
-        if away > 0 {
-            earn(away)
-            banners.append(Banner(text: "AWAY +\(compact(away))", color: Palette.gold, life: 3, big: false))
-        }
-        return away
     }
 
     func refreshMods() { mods = Mods.from(ranks: progress.skillRanks, stars: progress.stars) }
@@ -411,7 +407,6 @@ public final class Game {
         progress.money += v
         progress.runEarnings += v
         progress.totalEarnings += v
-        incomeWindow += v
     }
 
     func revealWall(_ i: Int) {

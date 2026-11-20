@@ -31,8 +31,6 @@ public struct Progress: Codable, Equatable, Sendable {
     public var balls: [String: BallProgress] = [:]
     public var runEarnings: Double = 0
     public var totalEarnings: Double = 0
-    /// Smoothed money per second, for offline earnings.
-    public var incomeRate: Double = 0
     /// Seconds played on the current level, and the last level's clear time.
     public var levelTime: Double = 0
     public var lastClearTime: Double = 0
@@ -63,14 +61,11 @@ public struct SaveFile: Codable, Equatable, Sendable {
     public var version: Int
     public var progress: Progress
     public var board: BoardSave?
-    /// Seconds since 1970, for offline earnings.
-    public var savedAt: Double
 
-    public init(progress: Progress, board: BoardSave?, savedAt: Double) {
+    public init(progress: Progress, board: BoardSave?) {
         version = SaveFile.currentVersion
         self.progress = progress
         self.board = board
-        self.savedAt = savedAt
     }
 }
 
