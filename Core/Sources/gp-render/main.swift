@@ -1,7 +1,8 @@
 // gp-render: renders game scenes to PNG without a device.
 //   swift run gp-render <scene> <out-dir> [--device NAME] [--scale N] [--size WxH] [--frames N] [--bloom]
 // Scenes: see Scenes.names (menu, start, mid, late, tree, sheet, ...), all; or icon
-// (the flat 1024 px PNGs), or icon-layers (one SVG per Icon.Layer, for ios/AppIcon.icon/Assets).
+// (the flat 1024 px PNGs), icon-layers (one SVG per Icon.Layer, for ios/AppIcon.icon/Assets),
+// or levels (every campaign level's walls on one sheet).
 // Default: the Duo canvas (475x334) at scale 6 = the device's own pixels, bloom off, so the
 // output is pixel-exact (every 6x6 block one colour; tools/gridcheck.py verifies).
 // --device duo|iphone|max|se|mini renders that screen's canvas with its safe area, at its own
@@ -42,6 +43,25 @@ if scene == "icon-layers" {
         try Icon.svg(layer).write(to: out.appendingPathComponent("\(layer.rawValue).svg"), atomically: true, encoding: .utf8)
     }
     print("rendered icon layers: \(Icon.Layer.allCases.map(\.rawValue).joined(separator: ", "))")
+    exit(0)
+}
+if scene == "levels" {
+    // One sheet of every campaign level's map, one art pixel per cell, walls only (grey):
+    // the shape each level is dug out of, for level design.
+    let count = LevelSpec.campaign.count, cols = 4, tile = 2 * 50 + 5 + 8, head = 14
+    let rows = (count + cols - 1) / cols
+    let sheet = Canvas(width: cols * tile + 8, height: rows * (tile + head) + 8)
+    sheet.fill(0, 0, sheet.width, sheet.height, Palette.black)
+    for level in 1...count {
+        let b = LevelGen.make(level: level)
+        let ox = 8 + ((level - 1) % cols) * tile, oy = 8 + ((level - 1) / cols) * (tile + head)
+        _ = sheet.text("\(level) \(b.name)", ox, oy, Palette.text)
+        for y in 0..<b.size { for x in 0..<b.size where b.kind[b.index(x, y)] == .wall {
+            sheet.set(ox + x, oy + head + y, Palette.muted)
+        } }
+    }
+    try Data(PNG.encode(sheet, scale: scale, bloom: false)).write(to: out.appendingPathComponent("levels.png"))
+    print("rendered levels")
     exit(0)
 }
 let scenes = scene == "all" ? Scenes.names : [scene]

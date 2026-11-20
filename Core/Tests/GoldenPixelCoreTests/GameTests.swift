@@ -120,6 +120,19 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(g2.balls.count, g.balls.count)
     }
 
+    func testBreakingTheGoldClosesTheTreeSoTheWinIsSeen() {
+        let (g, _) = play(Progress(), seed: 5)
+        g.ui.skillsOpen = true
+        let i = g.board.index(g.board.gold.x, g.board.gold.y)
+        g.damageCell(i, g.board.hp[i] + 1)
+        XCTAssertFalse(g.ui.skillsOpen, "the tree closes so the win is seen")
+        g.perform(.openSkills)
+        XCTAssertFalse(g.ui.skillsOpen, "and stays shut until the next level")
+        for _ in 0..<Int(Tuning.levelClearPause * 60 + 10) { g.update(1.0 / 60) }
+        g.perform(.openSkills)
+        XCTAssertTrue(g.ui.skillsOpen)
+    }
+
     func testOldAndFutureSavesAreNotLoaded() {
         XCTAssertNil(SaveCodec.decode(Data(#"{"version": 99, "progress": {}, "savedAt": 0}"#.utf8)))
         XCTAssertNil(SaveCodec.decode(Data(#"{"version": 1, "progress": {}, "savedAt": 0}"#.utf8)))

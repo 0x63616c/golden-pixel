@@ -492,6 +492,7 @@ extension Game {
             ui.sheet = nil; ui.skillsOpen = false; ui.paused = false; ui.confirmingRestart = false
             events.append(.tap)
         case .openSkills:
+            guard clearTimer == nil else { break }
             ui.skillsOpen = true
             ui.sheet = nil
             let f = SkillTree.focus(ranks: progress.skillRanks, selected: ui.selectedSkill)
@@ -522,11 +523,11 @@ extension Game {
             ui.screen = .game
             events.append(.tap)
         case .ballRow(let k):
-            if ui.selected == k { ui.sheet = k } else { ui.selected = k }
+            if ui.selected == k, clearTimer == nil { ui.sheet = k } else { ui.selected = k }
             events.append(.tap)
         case .buyBall(let k):
             if mods.unlocked.contains(k) { ui.selected = k; buyBall(k) }
-            else {
+            else if clearTimer == nil {
                 ui.sheet = nil; ui.skillsOpen = true; ui.selectedSkill = "u-\(k.rawValue)"
                 let f = SkillTree.focus(ranks: progress.skillRanks, selected: ui.selectedSkill)
                 ui.treeCamera.look(at: f.x, f.y)

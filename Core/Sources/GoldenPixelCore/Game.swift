@@ -386,6 +386,9 @@ public final class Game {
     func goldBroken(_ x: Int, _ y: Int) {
         events.append(.goldBroken)
         shake = 1
+        // The win is never hidden: the tree or an info sheet closes so you see the gold go,
+        // and neither opens again until the next level starts.
+        ui.skillsOpen = false; ui.sheet = nil; ui.launch = nil
         progress.stars += 1
         refreshMods()
         for r in 0..<3 {
