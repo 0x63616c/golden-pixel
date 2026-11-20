@@ -21,8 +21,8 @@ let out = URL(fileURLWithPath: args.count > 1 ? args[1] : "build/render")
 try? FileManager.default.createDirectory(at: out, withIntermediateDirectories: true)
 
 if scene == "icon" {
-    let icon = Icon.draw()
-    try Data(PNG.encode(icon, scale: Icon.scale, bloom: false)).write(to: out.appendingPathComponent("icon.png"))
+    try Data(PNG.encode(Icon.draw(), scale: Icon.scale, bloom: false)).write(to: out.appendingPathComponent("icon.png"))
+    try Data(PNG.encode(Icon.draw(.tinted), scale: Icon.scale, bloom: false)).write(to: out.appendingPathComponent("icon-tinted.png"))
     print("rendered icon")
     exit(0)
 }

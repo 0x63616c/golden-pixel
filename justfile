@@ -11,10 +11,14 @@ test:
 render out="build/render":
     swift run -c release gp-render all {{out}} --scale 3
 
-# Render the 1024 px app icon and copy it into the asset catalog
+# Render the 1024 px app icon (and its tinted greyscale) into the asset catalog
 icon:
-    swift run -c release gp-render icon build/icon.png
-    sips -s format png --deleteProperty hasAlpha build/icon.png --out ios/Assets.xcassets/AppIcon.appiconset/icon-1024.png 2>/dev/null || cp build/icon.png ios/Assets.xcassets/AppIcon.appiconset/icon-1024.png
+    swift run -c release gp-render icon build
+    # gp-render writes stored (uncompressed) PNGs; sips recompresses them (3 MB -> ~20 KB).
+    for f in icon icon-tinted; do \
+        dst=ios/Assets.xcassets/AppIcon.appiconset/${f/icon/icon-1024}.png; \
+        sips -s format png build/$f.png --out $dst >/dev/null 2>&1 || cp build/$f.png $dst; \
+    done
 
 # Regenerate the Xcode project from ios/project.yml
 ios-project:
