@@ -229,11 +229,13 @@ extension Renderer {
         let s = max(1, Int(cam.zoom.rounded(.down)))
         c.clip = L.board
         if let l = g.ui.launch {
+            // A thin ring in the ball's colour marks the ball being placed apart from the rest.
+            c.ring(Double(l.from.x) + 0.5, Double(l.from.y) + 0.5, 2.5 * Double(s) + 3, Palette.dimmer(k.color).glowing(120))
             c.sprite(Sprites.ball(k), l.from.x - 2 * s, l.from.y - 2 * s, scale: s)
             if let d = l.direction {
                 let len = (d.x * d.x + d.y * d.y).squareRoot()
                 for j in 0..<4 {
-                    let r = Double(3 * s + 4 + j * 4)
+                    let r = 2.5 * Double(s) + 6 + Double(j * 4)
                     let x = l.from.x + Int((d.x / len * r).rounded()), y = l.from.y + Int((d.y / len * r).rounded())
                     let big = j < 2
                     c.fill(x - (big ? 1 : 0), y - (big ? 1 : 0), big ? 2 : 1, big ? 2 : 1, k.color.glowing(160))

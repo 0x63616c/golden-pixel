@@ -62,6 +62,25 @@ Island and the home indicator. Needs Pillow; with `uv` installed it is fetched f
 For a quick look without a simulator, render any canvas size from the core:
 `swift run -c release gp-render late build/phone --size 437x201` (an iPhone 18 Pro at art scale 6).
 
+## App icon
+
+`ios/AppIcon.icon` is an Icon Composer document (iOS 26+ Liquid Glass: default, dark, tinted
+and clear), compiled by Xcode into `Assets.car`. Its art is generated: `Icon.swift` draws the
+32 x 32 icon as four layers, back to front `board` (blocks, keyline cut out), `gold`, `rays` and
+`ball`, and `just icon` writes each as an SVG of whole-art-pixel rects (32-unit viewBox at
+1024 pt, so edges stay on the grid) into `AppIcon.icon/Assets`. `icon.json` holds the glass
+and is edited in Icon Composer (`open ios/AppIcon.icon`):
+
+- Fill: black in every appearance (the dark is the icon's open space).
+- Board group: flat (no glass, specular or shadow) so the blocks stay crisp; 45% opacity
+  when tinted/clear so the gold leads.
+- Gold group: gold glass with specular and a full-strength layer-colour shadow (its glow);
+  the rays flat. The gold is filled white when tinted/clear, the brightest thing on it.
+- Ball group: glass with specular and a neutral shadow, the top of the stack.
+
+`just icon-preview` renders all six appearances with Icon Composer's `ictool` into
+`build/icon-preview`. `gp-render icon` still writes the flat 1024 px PNGs (marketing art).
+
 ## Release
 
 - App: **Golden Pixel**, bundle ID `co.worldwidewebb.goldenpixel`, team `X9E4HG27NK`, SKU `golden-pixel-001`.

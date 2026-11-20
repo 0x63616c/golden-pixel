@@ -7,11 +7,11 @@ Golden Pixel is a native Swift iOS game. Read this before changing anything.
 | Path | What |
 | --- | --- |
 | `Core/Sources/GoldenPixelCore` | The whole game: rules, levels, fog, economy, sim, UI layout, and the CPU rasteriser. Pure Swift, no Apple UI frameworks (a test enforces it), so it builds and tests on Linux. |
-| `Core/Sources/gp-render` | CLI that renders staged scenes and the app icon to PNG. |
+| `Core/Sources/gp-render` | CLI that renders staged scenes and the app icon to PNG, and the icon's layer SVGs for `ios/AppIcon.icon`. |
 | `Core/Tests` | Unit tests: durability, economy, level generation, fog reveal, camera and gestures, game flow, renderer invariants, the grid check, architecture. |
 | `tools/` | `gridcheck.py` (screenshot grid check), `compare.py` (side-by-side sheets of simulator screenshots), `bake-font.py` (font baking), font licence. |
 | `App/` | The iOS shell: SwiftUI app, `MTKView` presenter + shaders, touch mapping, save file, haptics, sound. Thin on purpose. |
-| `ios/` | XcodeGen `project.yml`, Info.plist, assets, `ios.sh` (sim, device, archive, screenshots, device comparison). The `.xcodeproj` is generated, never committed. |
+| `ios/` | XcodeGen `project.yml`, Info.plist, assets, the Icon Composer app icon (`AppIcon.icon`), `ios.sh` (sim, device, archive, screenshots, device comparison). The `.xcodeproj` is generated, never committed. |
 | `fastlane/` | API-key lanes: `setup` (bundle ID, app record, TestFlight group), `beta`, `status`. |
 | `.github/workflows` | `ci.yml` (PR gate), `testflight.yml` (main → TestFlight), `asc-setup.yml`, `pr-conventions.yml`. |
 | `docs/` | Architecture, design, iOS and release notes. |

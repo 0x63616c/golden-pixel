@@ -23,7 +23,8 @@ final class GameHost {
             game = Game(seed: UInt64(Date().timeIntervalSince1970))
             if let file = SaveStore.load() { game.load(file, now: Date().timeIntervalSince1970) }
         }
-        game.buildLabel = GameHost.buildLabel
+        // App Store screenshots (`-GPStore YES`) show no build label.
+        game.buildLabel = UserDefaults.standard.bool(forKey: "GPStore") ? "" : GameHost.buildLabel
     }
 
     /// "1.0.0 (202611201804) a1b2c3d": the version and build number exactly as TestFlight

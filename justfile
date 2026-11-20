@@ -11,14 +11,24 @@ test:
 render out="build/render":
     swift run -c release gp-render all {{out}} --scale 3
 
-# Render the 1024 px app icon (and its tinted greyscale) into the asset catalog
+# Rebuild the app icon's layer SVGs in the Icon Composer document (ios/AppIcon.icon), plus the
+# flat 1024 px PNGs in build/ for reference. icon.json (glass, shadows, appearances) is edited in
+# Icon Composer: open ios/AppIcon.icon.
 icon:
+    swift run -c release gp-render icon-layers ios/AppIcon.icon/Assets
     swift run -c release gp-render icon build
-    # gp-render writes stored (uncompressed) PNGs; sips recompresses them (3 MB -> ~20 KB).
-    for f in icon icon-tinted; do \
-        dst=ios/Assets.xcassets/AppIcon.appiconset/${f/icon/icon-1024}.png; \
-        sips -s format png build/$f.png --out $dst >/dev/null 2>&1 || cp build/$f.png $dst; \
+
+# Preview the Icon Composer icon as iOS draws it, in every appearance, into <out>
+icon-preview out="build/icon-preview":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    ictool="$(xcode-select -p)/../Applications/Icon Composer.app/Contents/Executables/ictool"
+    mkdir -p {{out}}
+    for r in Default Dark TintedLight TintedDark ClearLight ClearDark; do
+        "$ictool" ios/AppIcon.icon --export-image --output-file {{out}}/$r.png \
+            --platform iOS --rendition $r --width 1024 --height 1024 --scale 1 >/dev/null
     done
+    echo "wrote {{out}}/{Default,Dark,TintedLight,TintedDark,ClearLight,ClearDark}.png"
 
 # Regenerate the Xcode project from ios/project.yml
 ios-project:
@@ -47,6 +57,18 @@ beta:
 # TestFlight processing state of the latest builds
 beta-status:
     bundle exec fastlane ios status
+
+# App Store screenshots (duo, iphone, max simulators) into fastlane/screenshots/en-US
+appstore-shots out="build/appstore":
+    ios/ios.sh appstore {{out}}
+
+# Audit the App Store listing in the repo: limits, ASO, screenshots, privacy (--online checks URLs)
+appstore-check *args:
+    python3 tools/appstore.py check {{args}}
+
+# Read-only App Store Connect state: versions, attached build, listing, screenshots, builds
+appstore-status:
+    bundle exec fastlane ios appstore_status
 
 # Point git at the repo hooks
 hooks:

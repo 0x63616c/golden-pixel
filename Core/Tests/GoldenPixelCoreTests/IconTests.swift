@@ -50,4 +50,42 @@ final class IconTests: XCTestCase {
         XCTAssertEqual(goldLevel, 255)
         XCTAssertLessThan(otherMax, goldLevel)
     }
+
+    /// The Icon Composer layers stacked back to front on the dark are exactly the flat icon. Only
+    /// the rays sit over another layer (the blocks), as in the logo; the gold and the ball stand
+    /// alone, so their glass never doubles anything up.
+    func testLayersStackIntoTheFlatIcon() {
+        let flat = Icon.draw()
+        var stacked = [Pixel](repeating: Palette.black, count: flat.pixels.count)
+        var owners = [[Icon.Layer]](repeating: [], count: flat.pixels.count)
+        for layer in Icon.Layer.allCases {
+            for (i, p) in Icon.draw(layer).pixels.enumerated() where p != Palette.black {
+                stacked[i] = p; owners[i].append(layer)
+            }
+        }
+        XCTAssertEqual(stacked, flat.pixels)
+        for o in owners where o.count > 1 { XCTAssertEqual(o, [.board, .rays]) }
+    }
+
+    /// Each layer's SVG is whole-art-pixel rects on a 32-unit viewBox at 1024 pt that cover
+    /// exactly that layer's pixels, in its colours.
+    func testLayerSVGsAreWholePixelRects() throws {
+        let pattern = try Regex(##"<rect x="(\d+)" y="(\d+)" width="(\d+)" height="(\d+)" fill="#([0-9a-f]{6})"/>"##)
+        for layer in Icon.Layer.allCases {
+            let svg = Icon.svg(layer), c = Icon.draw(layer)
+            XCTAssertTrue(svg.contains(#"width="1024" height="1024" viewBox="0 0 32 32""#))
+            var covered = [Pixel](repeating: Palette.black, count: c.pixels.count)
+            for m in svg.matches(of: pattern) {
+                let n = (1...4).map { Int(m.output[$0].substring!)! }
+                let hex = UInt32(m.output[5].substring!, radix: 16)!
+                for y in n[1]..<(n[1] + n[3]) {
+                    for x in n[0]..<(n[0] + n[2]) {
+                        XCTAssertEqual(covered[y * Icon.size + x], Palette.black, "\(layer) overlaps at \(x),\(y)")
+                        covered[y * Icon.size + x] = rgb(hex)
+                    }
+                }
+            }
+            XCTAssertEqual(covered, c.pixels, "\(layer)")
+        }
+    }
 }

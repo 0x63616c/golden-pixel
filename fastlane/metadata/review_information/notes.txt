@@ -1,0 +1,5 @@
+Golden Pixel is a free single-player game with no account, no sign-in, no network access, no ads and no in-app purchases. No demo account is needed.
+
+How to play: tap PLAY. Hold an open (dark, empty) spot on the board, pull back and release to launch a ball; balls break the blue blocks and earn coins. Buy more balls from the panel on the right. Mint shards buy skills in the TREE. Break the golden pixel to finish the level.
+
+The app is designed for the inner display of iPhone Duo and runs landscape only. On other iPhones it is letterboxed so every art pixel stays on a whole-number device pixel grid; the black bars are intentional.

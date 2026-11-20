@@ -8,6 +8,9 @@
 #   ios/ios.sh shots <out-dir> [sim]   simulator screenshots + a short recording of staged scenes
 #   ios/ios.sh compare <out-dir> [sim...]   the same screenshots on every simulator (default: duo
 #                                      iphone max), one folder each, plus side-by-side sheets
+#   ios/ios.sh appstore [raw-dir]      App Store screenshots: STORE_SCENES on duo, iphone and max,
+#                                      raw captures in raw-dir (build/appstore), deliver-ready
+#                                      files in fastlane/screenshots/en-US (tools/appstore.py shots)
 # Simulators: duo = iPhone Duo (the target), iphone = iPhone 18 Pro, max = iPhone 18 Pro Max.
 # Pick a specific phone with DEVICE=<name or UDID> (see `xcrun devicectl list devices`).
 set -euo pipefail
@@ -20,6 +23,9 @@ SIM_NAME="GP Duo"
 SIM_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-Duo
 # The staged scenes every screenshot run captures (see Scenes.names in the core).
 SHOT_SCENES=(menu start mid zoom zoomout sheet launch pause late tree gold howto settings)
+# The App Store screenshots, in listing order (the first one or two carry the page; at most 10).
+# The appstore skill keeps this list current; see docs/release.md for the shot plan.
+STORE_SCENES=(hero aim goldhunt tree goldbreak sheet menu)
 
 # An output folder as the caller meant it: relative paths are relative to where they ran us.
 outdir() { [[ "$1" = /* ]] && echo "$1" || echo "$CALLER_DIR/$1"; }
@@ -171,6 +177,28 @@ compare() {
   "${py[@]}" ../tools/compare.py "$out" "${sims[@]}"
 }
 
+# App Store screenshots: STORE_SCENES on the Duo (inner screen; optional until April 2027, adds
+# the Duo badge), the iPhone 18 Pro (6.3", required) and the 18 Pro Max (6.9", required), then
+# tools/appstore.py arranges them for fastlane deliver. Uploading is a separate, gated step.
+appstore() {
+  local out; out=$(outdir "${1:-build/appstore}")
+  local known scene sim
+  known=$(sed -n '/static let names/,/]/p' ../Core/Sources/GoldenPixelCore/Scenes.swift)
+  for scene in "${STORE_SCENES[@]}"; do
+    # An unknown scene name launches the real game with the simulator's save: refuse early.
+    grep -q "\"$scene\"" <<<"$known" || die "STORE_SCENES: '$scene' is not in Scenes.names"
+  done
+  SHOT_SCENES=("${STORE_SCENES[@]}")
+  STORE_SHOTS=1   # launches with -GPStore YES: no build label in store screenshots
+  for sim in duo iphone max; do
+    use_sim "$sim"
+    capture "$out/$sim"
+  done
+  local py=(python3)
+  command -v uv >/dev/null && py=(uv run --quiet --with pillow python3)
+  "${py[@]}" ../tools/appstore.py shots "$out" ../fastlane/screenshots/en-US "${STORE_SCENES[@]}"
+}
+
 # Screenshots of every staged scene on the current simulator, into <out>; with a second
 # argument, short recordings too.
 capture() {
@@ -202,7 +230,7 @@ capture() {
   local scene
   for scene in "${SHOT_SCENES[@]}"; do
     say "Scene $scene"
-    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" >/dev/null
+    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" ${STORE_SHOTS:+-GPStore YES} >/dev/null
     sleep 4
     limit 30 xcrun simctl io "$udid" screenshot ${inner:+--display=$inner} "$out/$scene.png"
     [[ -n "$outer" ]] && { limit 30 xcrun simctl io "$udid" screenshot --display="$outer" "$out/outer/$scene.png" || true; }
@@ -272,7 +300,8 @@ case "${1:-}" in
   sim) shift; sim "$@" ;;
   shots) shift; shots "$@" ;;
   compare) shift; compare "$@" ;;
+  appstore) shift; appstore "$@" ;;
   device) shift; device "$@" ;;
   archive) shift; archive "$@" ;;
-  *) sed -n '2,13p' "$0"; exit 1 ;;
+  *) sed -n '2,15p' "$IOS_DIR/$(basename "$0")"; exit 1 ;;
 esac

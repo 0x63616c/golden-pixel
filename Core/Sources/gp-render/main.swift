@@ -1,6 +1,7 @@
 // gp-render: renders game scenes to PNG without a device.
 //   swift run gp-render <scene> <out-dir> [--scale N] [--size WxH] [--frames N] [--bloom]
-// Scenes: title, start, early, mid, late, skills, upgrades, gold, portrait, zoom, all; or icon.
+// Scenes: title, start, early, mid, late, skills, upgrades, gold, portrait, zoom, all; or icon
+// (the flat 1024 px PNGs), or icon-layers (one SVG per Icon.Layer, for ios/AppIcon.icon/Assets).
 // Default: the Duo canvas (475x334) at scale 6 = the device's own pixels, bloom off, so the
 // output is pixel-exact (every 6x6 block one colour; tools/gridcheck.py verifies).
 import Foundation
@@ -24,6 +25,13 @@ if scene == "icon" {
     try Data(PNG.encode(Icon.draw(), scale: Icon.scale, bloom: false)).write(to: out.appendingPathComponent("icon.png"))
     try Data(PNG.encode(Icon.draw(.tinted), scale: Icon.scale, bloom: false)).write(to: out.appendingPathComponent("icon-tinted.png"))
     print("rendered icon")
+    exit(0)
+}
+if scene == "icon-layers" {
+    for layer in Icon.Layer.allCases {
+        try Icon.svg(layer).write(to: out.appendingPathComponent("\(layer.rawValue).svg"), atomically: true, encoding: .utf8)
+    }
+    print("rendered icon layers: \(Icon.Layer.allCases.map(\.rawValue).joined(separator: ", "))")
     exit(0)
 }
 let scenes = scene == "all" ? Scenes.names : [scene]

@@ -1,0 +1,1 @@
+breakout,incremental,clicker,arcade,retro,8bit,dig,miner,cave,offline,block,bounce,smash,foldable

@@ -37,32 +37,94 @@ public enum Icon {
     /// The ball's top-left, in the dark left of the gold and clear of its rays.
     static let ball = Point(2, 10)
 
+    /// The icon's parts, back to front, as the Icon Composer document (`ios/AppIcon.icon`)
+    /// stacks them: each is one SVG layer there, so iOS can give each its own Liquid Glass depth.
+    public enum Layer: String, CaseIterable, Sendable {
+        /// The blue blocks, with the gold's keyline cut out of them (the dark shows through).
+        case board
+        /// The golden pixel itself.
+        case gold
+        /// Its four diagonal rays.
+        case rays
+        /// The white ball coming out of the dark.
+        case ball
+    }
+
     public static func draw(_ appearance: Appearance = .standard) -> Canvas {
         let c = Canvas(width: size, height: size)
         c.clear(Palette.black)
-        for (y, row) in cells.enumerated() {
-            for (x, ch) in row.enumerated() {
-                guard let step = ch.wholeNumberValue else { continue }
-                c.fill(x * cell, y * cell, cell, cell, Palette.ladder[step])
-            }
-        }
-        // Keyline, gold, then the rays from its corners (over the keyline and the blocks, as
-        // the logo's run over its keyline): light, with a dim last pixel.
-        c.fill(gold.inset(-1), Palette.black)
-        c.fill(gold, Palette.gold)
-        for (x0, y0, dx, dy) in [(gold.x - 1, gold.y - 1, -1, -1), (gold.maxX, gold.y - 1, 1, -1),
-                                 (gold.x - 1, gold.maxY, -1, 1), (gold.maxX, gold.maxY, 1, 1)] {
-            for k in 1...rayLength {
-                c.set(x0 + dx * k, y0 + dy * k, k < rayLength ? Palette.goldLight : Palette.goldDim)
-            }
-        }
-        c.sprite(Sprites.ball(.basic), ball.x, ball.y)
+        for layer in Layer.allCases { paint(layer, on: c) }
         // The icon has no bloom: strip the glow bytes.
         for i in c.pixels.indices { c.pixels[i] &= 0x00ff_ffff }
         if appearance == .tinted {
             for i in c.pixels.indices { c.pixels[i] = tintedGrey(c.pixels[i]) }
         }
         return c
+    }
+
+    /// One layer alone on black (black = empty), without glow bytes.
+    public static func draw(_ layer: Layer) -> Canvas {
+        let c = Canvas(width: size, height: size)
+        c.clear(Palette.black)
+        paint(layer, on: c)
+        for i in c.pixels.indices { c.pixels[i] &= 0x00ff_ffff }
+        return c
+    }
+
+    static func paint(_ layer: Layer, on c: Canvas) {
+        switch layer {
+        case .board:
+            for (y, row) in cells.enumerated() {
+                for (x, ch) in row.enumerated() {
+                    guard let step = ch.wholeNumberValue else { continue }
+                    c.fill(x * cell, y * cell, cell, cell, Palette.ladder[step])
+                }
+            }
+            // The gold's 1-px black keyline.
+            c.fill(gold.inset(-1), Palette.black)
+        case .gold:
+            c.fill(gold, Palette.gold)
+        case .rays:
+            // From the gold's corners, over the blocks as the logo's run over its keyline:
+            // light, with a dim last pixel.
+            for (x0, y0, dx, dy) in [(gold.x - 1, gold.y - 1, -1, -1), (gold.maxX, gold.y - 1, 1, -1),
+                                     (gold.x - 1, gold.maxY, -1, 1), (gold.maxX, gold.maxY, 1, 1)] {
+                for k in 1...rayLength {
+                    c.set(x0 + dx * k, y0 + dy * k, k < rayLength ? Palette.goldLight : Palette.goldDim)
+                }
+            }
+        case .ball:
+            c.sprite(Sprites.ball(.basic), ball.x, ball.y)
+        }
+    }
+
+    /// A layer as a 1024 pt SVG for Icon Composer: one `rect` per flat run of art pixels on a
+    /// 32-unit viewBox, so every edge lands on the art grid at any whole-multiple size. Black is
+    /// empty (the document's fill is the dark).
+    public static func svg(_ layer: Layer) -> String {
+        let c = draw(layer)
+        var done = [Bool](repeating: false, count: size * size)
+        var rects: [String] = []
+        for y in 0..<size {
+            for x in 0..<size where !done[y * size + x] && c.get(x, y) != Palette.black {
+                // Greedy: widen along the row, then grow down while the whole run matches.
+                let p = c.get(x, y)
+                var w = 1
+                while x + w < size, !done[y * size + x + w], c.get(x + w, y) == p { w += 1 }
+                var h = 1
+                while y + h < size, (x..<(x + w)).allSatisfy({ !done[(y + h) * size + $0] && c.get($0, y + h) == p }) { h += 1 }
+                for yy in y..<(y + h) { for xx in x..<(x + w) { done[yy * size + xx] = true } }
+                let hex = "#" + [p.red, p.green, p.blue].map { ($0 < 16 ? "0" : "") + String($0, radix: 16) }.joined()
+                rects.append("  <rect x=\"\(x)\" y=\"\(y)\" width=\"\(w)\" height=\"\(h)\" fill=\"\(hex)\"/>")
+            }
+        }
+        let pt = size * scale
+        return """
+            <svg xmlns="http://www.w3.org/2000/svg" width="\(pt)" height="\(pt)" viewBox="0 0 \(size) \(size)" shape-rendering="crispEdges">
+            \(rects.joined(separator: "\n"))
+            </svg>
+
+            """
     }
 
     /// Grey level per icon colour for the tinted appearance: the gold brightest, its rays next,
