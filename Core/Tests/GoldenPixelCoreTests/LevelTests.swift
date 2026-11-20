@@ -104,7 +104,7 @@ final class LevelTests: XCTestCase {
             XCTAssertEqual(b.hp[i], expected, accuracy: 1e-9)
         }
         let g = b.index(b.gold.x, b.gold.y)
-        XCTAssertEqual(b.hp[g], Economy.tierHP(4, level: 4) * Tuning.goldHPMultiplier, accuracy: 1e-9)
+        XCTAssertEqual(b.hp[g], Economy.goldHP(level: 4), accuracy: 1e-9)
     }
 
     /// One level holds exactly the whole tree's price in shards, spread over its shard pixels.

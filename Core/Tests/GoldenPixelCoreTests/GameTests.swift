@@ -189,8 +189,8 @@ final class GameTests: XCTestCase {
         return Point(g.ui.layout.board.x + Int(v.x), g.ui.layout.board.y + Int(v.y))
     }
 
-    /// Hold an open spot on the board briefly, then drag out: a ball of the selected type appears
-    /// right where you held and flies the way you pulled.
+    /// Hold an open spot on the board briefly, then pull: a ball of the selected type appears
+    /// right where you held and flies the opposite way, like a slingshot.
     func testHoldAndDragPlacesABallWhereYouHeldAndAimsIt() {
         var p = Progress(); p.money = 1000
         let (g, _) = play(p)
@@ -212,13 +212,14 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(g.balls.count, 1)
         let b = g.balls[0]
         XCTAssertEqual(Int(b.x), sp.x); XCTAssertEqual(Int(b.y), sp.y)
-        XCTAssertEqual(b.vx, 0.6, accuracy: 1e-9)
-        XCTAssertEqual(b.vy, -0.8, accuracy: 1e-9)
+        // Slingshot: pulled up and to the right, it flies down and to the left.
+        XCTAssertEqual(b.vx, -0.6, accuracy: 1e-9)
+        XCTAssertEqual(b.vy, 0.8, accuracy: 1e-9)
         XCTAssertEqual(g.progress.money, 1000 - Tuning.startCoins)
         // A plain tap on an open spot launches along the last direction.
         g.handle(.down(from)); g.handle(.tap(from, time: 5))
         XCTAssertEqual(g.balls.count, 2)
-        XCTAssertEqual(g.balls[1].vx, 0.6, accuracy: 1e-9)
+        XCTAssertEqual(g.balls[1].vx, -0.6, accuracy: 1e-9)
     }
 
     /// A quick drag pans, even from an open spot: only a hold places a ball.

@@ -185,15 +185,17 @@ public struct Layout: Equatable, Sendable {
     }
 }
 
-/// A ball being placed on the board: pressed at `from` (an open cell), aimed at `to`. It flies
-/// from `from` toward `to`; a press without a pull uses the last direction.
+/// A ball being placed on the board: held at `from` (an open cell), then pulled back to `to`,
+/// slingshot style: it flies the opposite way, from `from` away from the finger. A hold with no
+/// pull uses the last direction.
 public struct LaunchDrag: Equatable, Sendable {
     public var from: Point
     public var to: Point
     public init(from: Point, to: Point) { self.from = from; self.to = to }
-    /// The aim (canvas pixels, not normalised), or nil while the pull is too short to count.
-    public var pull: (x: Double, y: Double)? {
-        let dx = Double(to.x - from.x), dy = Double(to.y - from.y)
+    /// The launch direction (canvas pixels, not normalised): away from the finger. Nil while
+    /// the pull is too short to count.
+    public var direction: (x: Double, y: Double)? {
+        let dx = Double(from.x - to.x), dy = Double(from.y - to.y)
         return dx * dx + dy * dy < Double(LaunchDrag.minPull * LaunchDrag.minPull) ? nil : (dx, dy)
     }
     public static let minPull = 6
@@ -395,7 +397,7 @@ extension Game {
         let v = viewPoint(l.from)
         let b = ui.camera.toBoard(v.x, v.y)
         let cp = Double(Tuning.cellPixels)
-        let ok = buyBall(k, at: (b.x / cp, b.y / cp), direction: l.pull)
+        let ok = buyBall(k, at: (b.x / cp, b.y / cp), direction: l.direction)
         if !ok, balls.count < Tuning.maxBalls {
             ui.tooltip = Tooltip(lines: ["NEED " + coins(ballCost(k)) + " COINS"], at: l.from, until: time + 1.2)
         }

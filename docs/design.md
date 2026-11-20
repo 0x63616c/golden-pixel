@@ -10,7 +10,8 @@ and pause buttons, and one row per unlocked ball type.
 - **Coins buy balls.** A level starts with no balls and coins for exactly one basic ball. The
   panel lists only unlocked types; tap one to select it (lit row, colour bar). Hold an open
   spot on the board where you want the ball for a moment (a tick, and a ghost ball appears),
-  then drag out: a few dots show the way it will fly; let go to buy it. A plain tap on an open
+  then pull back like a slingshot: it flies the opposite way to your pull, and a few dots in
+  front of the ghost show that way; let go to buy it. A plain tap on an open
   spot uses the last direction. A quick one-finger drag always pans, so open levels stay easy
   to move around; two fingers pan and zoom. Tap the selected row again (or hold any row) for its info sheet. Coins read in
   full (1,800) below a million.
@@ -18,12 +19,13 @@ and pause buttons, and one row per unlocked ball type.
   level; level length comes from each level's coin payout (`Tuning.levelPayout`).
 - **Pause and restart.** The panel's pause button (two bars) opens: RESUME, RESTART LEVEL (asks first),
   MAIN MENU. The main menu itself is just PLAY/CONTINUE, HOW TO PLAY and SETTINGS.
-- **Shards buy the skill tree.** Glowing mint shard pixels pay shards; a level's shards add up
+- **Shards buy the skill tree.** Solid glowing mint shard pixels (one hit each) pay shards; a level's shards add up
   to the whole tree, and deeper shards pay more. You sense a shard through the dark once your
   light gets within 6 cells, but only the two closest show at once.
   The tree holds the general skills and every ball type's upgrades (unlock, damage, speed,
   special, two specialisations).
-- **Break the gold to clear the level.** Each gold is a star for good (+5% damage, +10%
+- **Break the gold to clear the level.** It's the level's boss: hundreds of hits (400 on level
+  1, x1.5 a level), draining dim from the top as it takes damage. Each gold is a star for good (+5% damage, +10%
   coins). Every level starts fresh: coins, shards, tree and balls reset.
 - Levels are 93 to 107 cells across, much bigger than the screen, and take 15 to 25
   minutes (`swift run -c release gp-sim` checks it); the camera starts on the

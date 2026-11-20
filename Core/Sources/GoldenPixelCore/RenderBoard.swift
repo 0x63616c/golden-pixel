@@ -177,7 +177,7 @@ extension Renderer {
         case .block:
             // Durability is brightness alone: the block's step on the blue ladder.
             base = Palette.ladder[Economy.ladderStep(hp: b.hp[i], level: b.level)].glowing(26)
-        case .shard: base = Palette.mintDeep.glowing(60)
+        case .shard: base = Palette.mint.glowing(200)
         case .gold: base = Palette.gold.glowing(255)
         }
         // A hit flashes the cell white for one frame.
@@ -197,13 +197,14 @@ extension Renderer {
                 var col = base
                 switch kind {
                 case .gold:
+                    // Damage drains it from the top: the lost share of its HP shows dim.
+                    let lost = 1 - b.hp[i] / max(1, b.maxHP[i])
+                    if ly < Int((lost * Double(cp)).rounded(.up)) && b.hp[i] < b.maxHP[i] { col = Palette.goldDim.glowing(120) }
                     // A shimmer line sweeping across.
-                    if ((ax + ay) - Int(t * 12)) % 24 == 0 { col = Palette.white.glowing(255) }
+                    else if ((ax + ay) - Int(t * 12)) % 24 == 0 { col = Palette.white.glowing(255) }
                 case .shard:
-                    if lx >= 1, ly >= 1, lx <= 8, ly <= 8, Renderer.diamond[(ly - 1) * 8 + (lx - 1)] {
-                        // The diamond, with a sparkle line sweeping over it.
-                        col = ((ax - ay) - Int(t * 10)) % 16 == 0 ? Palette.white.glowing(255) : Palette.mint.glowing(200)
-                    }
+                    // A solid glowing mint cell, with a sparkle line sweeping over it.
+                    if ((ax - ay) - Int(t * 10)) % 16 == 0 { col = Palette.white.glowing(255) }
                 default: break
                 }
                 c.set(ax, ay, col)
@@ -219,7 +220,7 @@ extension Renderer {
     // MARK: - Launch preview
 
     /// Placing a ball: a ghost of the selected ball where the finger went down, with a few dots
-    /// in front of it toward the finger (the way it will start flying). With no balls yet, a
+    /// in front of it on the side away from the finger (the way it will fly). With no balls yet, a
     /// ghost blinks at the spawn with a short prompt.
     func drawLaunchPreview(_ g: Game, _ L: Layout) {
         guard g.ui.sheet == nil, !g.ui.skillsOpen, !g.ui.paused, g.clearTimer == nil else { return }
@@ -229,7 +230,7 @@ extension Renderer {
         c.clip = L.board
         if let l = g.ui.launch {
             c.sprite(Sprites.ball(k), l.from.x - 2 * s, l.from.y - 2 * s, scale: s)
-            if let d = l.pull {
+            if let d = l.direction {
                 let len = (d.x * d.x + d.y * d.y).squareRoot()
                 for j in 0..<4 {
                     let r = Double(3 * s + 4 + j * 4)

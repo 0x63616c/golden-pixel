@@ -34,6 +34,11 @@ public enum Economy {
     }
     public static func tierHP(_ tier: Int, level: Int) -> Double { Tuning.tierHP[tier] }
 
+    /// The golden pixel: the level's boss, far tougher than any block, and tougher each level.
+    public static func goldHP(level: Int) -> Double {
+        (Tuning.goldHP * pow(Tuning.goldHPGrowth, Double(max(1, level) - 1))).rounded()
+    }
+
     /// One step of the durability ladder: the HP of one shade (always 1).
     public static func hitUnit(level: Int) -> Double { 1 }
 

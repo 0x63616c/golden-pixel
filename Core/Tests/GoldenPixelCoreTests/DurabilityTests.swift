@@ -20,6 +20,18 @@ final class DurabilityTests: XCTestCase {
         }
     }
 
+    /// Shard pixels break in one hit; the golden pixel is the level's boss, far tougher than
+    /// any block and tougher every level.
+    func testShardsBreakInOneHitAndTheGoldIsTough() {
+        for level in 1...7 {
+            let b = LevelGen.make(level: level)
+            for i in b.kind.indices where b.kind[i] == .shard { XCTAssertEqual(b.hp[i], 1) }
+            let gold = b.hp[b.index(b.gold.x, b.gold.y)]
+            XCTAssertGreaterThanOrEqual(gold, 50 * Tuning.tierHP.max()!, "level \(level)")
+            if level > 1 { XCTAssertGreaterThan(gold, LevelGen.make(level: level - 1).hp[{ let p = LevelGen.make(level: level - 1); return p.index(p.gold.x, p.gold.y) }()]) }
+        }
+    }
+
     func testFreshBlocksShowTheirTierColour() {
         for level in [1, 4, 9] {
             for tier in 0..<5 {

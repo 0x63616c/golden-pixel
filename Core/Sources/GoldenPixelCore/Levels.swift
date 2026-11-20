@@ -182,10 +182,10 @@ public enum LevelGen {
                 let h = Economy.tierHP(Int(b.tier[i]), level: level)
                 b.hp[i] = h; b.maxHP[i] = h
             case .gold:
-                let h = Economy.tierHP(4, level: level) * Tuning.goldHPMultiplier
+                let h = Economy.goldHP(level: level)
                 b.hp[i] = h; b.maxHP[i] = h
             case .shard:
-                let h = Economy.tierHP(Tuning.shardTier, level: level)
+                let h = Tuning.shardHP
                 b.hp[i] = h; b.maxHP[i] = h
             default: break
             }

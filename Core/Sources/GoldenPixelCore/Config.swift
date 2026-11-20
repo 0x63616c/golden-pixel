@@ -234,12 +234,15 @@ public enum Tuning {
     public static let richMultiplier = 5.0
     /// Odds that a block is rich.
     public static let richChance = 0.02
-    public static let goldHPMultiplier = 3.0
+    /// Golden pixel HP on level 1, and its growth per level.
+    public static let goldHP = 400.0
+    public static let goldHPGrowth = 1.5
     public static let goldValueMultiplier = 40.0
     /// Shard pixels: how many a level hides (their values add up to the whole skill tree), how
     /// tough they are (as a tier), and how far into the dark you can sense them.
     public static let shardsPerLevel = 60
-    public static let shardTier = 2
+    /// Shard pixels break in one hit.
+    public static let shardHP = 1.0
     public static let shardSenseRadius = 6
     /// At most this many sensed shards show through the dark at once (the closest ones).
     public static let maxSensedShards = 2
