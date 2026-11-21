@@ -218,6 +218,21 @@ appstore() {
   "${py[@]}" ../tools/appstore.py shots "$out" "$(cd .. && pwd)/fastlane/screenshots/en-US" "${STORE_SCENES[@]}"
 }
 
+# A capture run leaves nothing running: a staged scene redraws every frame and holds a core
+# until it is quit, and an idle booted simulator is not idle either (its PosterBoard respawns
+# in a loop). On exit, also after a failure, quit the app on every simulator the run used and
+# shut down the ones it booted; a simulator that was already booted stays up.
+CAPTURED=() BOOTED=()
+release_sims() {
+  local u
+  for u in ${CAPTURED[@]+"${CAPTURED[@]}"}; do
+    limit 30 xcrun simctl terminate "$u" "$BUNDLE_ID" >/dev/null 2>&1 || true
+  done
+  for u in ${BOOTED[@]+"${BOOTED[@]}"}; do
+    limit 60 xcrun simctl shutdown "$u" >/dev/null 2>&1 || true
+  done
+}
+
 # Screenshots of every staged scene on the current simulator, into <out>; with a second
 # argument, short recordings too.
 capture() {
@@ -227,6 +242,9 @@ capture() {
   say "Building for $SIM_NAME ($udid)"
   build_sim "$udid"
   say "Booting"
+  trap release_sims EXIT
+  CAPTURED+=("$udid")
+  xcrun simctl list devices booted | grep -q "$udid" || BOOTED+=("$udid")
   boot_sim "$udid"
   say "Installing"
   xcrun simctl install "$udid" build/sim/Build/Products/Debug-iphonesimulator/GoldenPixel.app
@@ -254,17 +272,20 @@ capture() {
     limit 30 xcrun simctl io "$udid" screenshot ${inner:+--display=$inner} "$out/$scene.png"
     [[ -n "$outer" ]] && { limit 30 xcrun simctl io "$udid" screenshot --display="$outer" "$out/outer/$scene.png" || true; }
   done
-  [[ -n "$record" ]] || return 0
-  for scene in menu late gold; do
-    say "Recording $scene"
-    limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" $(mute_flag) >/dev/null
-    sleep 1
-    xcrun simctl io "$udid" recordVideo ${inner:+--display=$inner} --codec=h264 --force "$out/$scene.mp4" &
-    local rec=$!
-    sleep 7
-    kill -INT "$rec"; wait "$rec" || true
-  done
-  ls -la "$out"
+  if [[ -n "$record" ]]; then
+    for scene in menu late gold; do
+      say "Recording $scene"
+      limit 60 xcrun simctl launch --terminate-running-process "$udid" "$BUNDLE_ID" -GPScene "$scene" $(mute_flag) >/dev/null
+      sleep 1
+      xcrun simctl io "$udid" recordVideo ${inner:+--display=$inner} --codec=h264 --force "$out/$scene.mp4" &
+      local rec=$!
+      sleep 7
+      kill -INT "$rec"; wait "$rec" || true
+    done
+    ls -la "$out"
+  fi
+  # Quit the last scene now, so a run over several simulators does not stack up busy apps.
+  limit 30 xcrun simctl terminate "$udid" "$BUNDLE_ID" >/dev/null 2>&1 || true
 }
 
 pick_device() {
