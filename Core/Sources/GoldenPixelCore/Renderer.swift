@@ -12,7 +12,7 @@
 /// The drawing is split by screen: `RenderBoard.swift` (the board and its HUD),
 /// `RenderPanel.swift` (the side panel and ball sheet), `RenderPause.swift` (the pause card),
 /// `RenderTree.swift` (the skill tree)
-/// and `RenderMenu.swift` (menu, how to play, settings).
+/// and `RenderMenu.swift` (menu, how to play, settings, level select).
 public final class Renderer {
     public private(set) var canvas: Canvas
     var boardCanvas: Canvas
@@ -70,6 +70,7 @@ public final class Renderer {
         case .menu: drawMenu(g)
         case .howTo: drawHowTo(g)
         case .settings: drawSettings(g)
+        case .levels: drawLevels(g)
         case .game:
             g.ui.camera.setSizes(boardW: g.board.pixelSize, boardH: g.board.pixelSize, viewW: layout.board.w, viewH: layout.board.h)
             drawBoard(g, layout)

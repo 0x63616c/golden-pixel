@@ -92,6 +92,108 @@ final class GameTests: XCTestCase {
         XCTAssertFalse(g.ui.paused)
     }
 
+    /// LEVELS shows on the main menu only once there is a level to go back to.
+    func testLevelsButtonAppearsOnceALevelIsCleared() {
+        let g = Game(seed: 1)
+        let r = Renderer()
+        r.render(g)
+        XCTAssertNil(hitRect(g, .levels), "nothing to pick on a fresh game")
+        g.progress.maxLevel = 2; g.progress.level = 2
+        r.render(g)
+        XCTAssertNotNil(hitRect(g, .levels))
+        g.handle(.tap(centre(hitRect(g, .levels)!)))
+        XCTAssertEqual(g.ui.screen, .levels)
+        r.render(g)
+        XCTAssertNotNil(hitRect(g, .pickLevel(1)))
+        XCTAssertNotNil(hitRect(g, .pickLevel(2)))
+        XCTAssertNil(hitRect(g, .pickLevel(3)), "no tiles past the furthest level reached")
+        g.handle(.tap(centre(hitRect(g, .backToMenu)!)))
+        XCTAssertEqual(g.ui.screen, .menu)
+    }
+
+    /// The current level's tile carries on where it was, with no question asked.
+    func testPickingTheCurrentLevelContinuesIt() {
+        var p = Progress(); p.maxLevel = 3; p.level = 3; p.money = 900; p.levelTime = 60; p.runEarnings = 700
+        let g = Game(progress: p)
+        g.perform(.levels)
+        g.perform(.pickLevel(3))
+        XCTAssertEqual(g.ui.screen, .game)
+        XCTAssertEqual(g.progress.money, 900)
+        XCTAssertEqual(g.progress.levelTime, 60)
+    }
+
+    /// Leaving a level in progress takes a second tap on the same tile; then the picked level
+    /// starts as a fresh run and the furthest level stays open.
+    func testPickingAnotherLevelAsksFirstThenStartsItFresh() {
+        var p = Progress(); p.maxLevel = 4; p.level = 4; p.stars = 3; p.money = 900; p.levelTime = 60; p.runEarnings = 700
+        p.shards = 2; p.balls[BallKind.basic.rawValue] = BallProgress(owned: 5)
+        let g = Game(progress: p)
+        g.perform(.levels)
+        g.perform(.pickLevel(2))
+        XCTAssertEqual(g.ui.screen, .levels, "the first tap only asks")
+        XCTAssertEqual(g.progress.level, 4)
+        XCTAssertEqual(g.ui.confirmLevel, 2)
+        g.perform(.pickLevel(1))
+        XCTAssertEqual(g.progress.level, 4, "a tap on another tile asks again rather than confirming")
+        g.perform(.pickLevel(1))
+        XCTAssertEqual(g.ui.screen, .game)
+        XCTAssertEqual(g.progress.level, 1)
+        XCTAssertEqual(g.board.level, 1)
+        XCTAssertEqual(g.progress.maxLevel, 4, "the furthest level stays open")
+        XCTAssertEqual(g.progress.stars, 3)
+        XCTAssertEqual(g.progress.money, Tuning.startCoins)
+        XCTAssertEqual(g.progress.shards, 0)
+        XCTAssertEqual(g.balls.count, 0)
+        // A level with nothing to lose yet is left without asking.
+        g.perform(.levels)
+        g.perform(.pickLevel(3))
+        XCTAssertEqual(g.progress.level, 3)
+        // The confirmation runs out.
+        g.progress.levelTime = 30
+        g.perform(.levels)
+        g.perform(.pickLevel(4))
+        g.time += 4
+        g.perform(.pickLevel(4))
+        XCTAssertEqual(g.progress.level, 3, "a late second tap asks again")
+        // Past the furthest level: nothing.
+        g.perform(.pickLevel(5))
+        g.perform(.pickLevel(5))
+        XCTAssertEqual(g.progress.level, 3)
+    }
+
+    /// Only a level's first clear gives a star: a replayed level's gold gives none, and the
+    /// next level after it is still a replay up to the furthest one.
+    func testReplayingAClearedLevelGivesNoStar() {
+        var p = Progress(); p.maxLevel = 4; p.level = 2; p.stars = 3
+        let (g, _) = play(p, seed: 5)
+        let i = g.board.index(g.board.gold.x, g.board.gold.y)
+        g.damageCell(i, g.board.hp[i] + 1)
+        XCTAssertTrue(g.events.contains(.goldBroken))
+        XCTAssertEqual(g.progress.stars, 3)
+        XCTAssertFalse(g.banners.contains { $0.text == "+1 STAR" })
+        for _ in 0..<Int(Tuning.levelClearPause * 60 + 10) { g.update(1.0 / 60) }
+        XCTAssertEqual(g.progress.level, 3)
+        XCTAssertEqual(g.progress.maxLevel, 4)
+    }
+
+    /// Breaking the furthest level's gold opens the next level straight away, so going to the
+    /// menu during the celebration never loses it (or lets the star be earned twice).
+    func testFirstClearOpensTheNextLevelAtOnce() {
+        var p = Progress(); p.maxLevel = 2; p.level = 2
+        let (g, _) = play(p, seed: 5)
+        let i = g.board.index(g.board.gold.x, g.board.gold.y)
+        g.damageCell(i, g.board.hp[i] + 1)
+        XCTAssertEqual(g.progress.stars, 1)
+        XCTAssertEqual(g.progress.maxLevel, 3)
+        XCTAssertTrue(g.cleared(2))
+        XCTAssertFalse(g.levelInProgress, "a broken gold has nothing left to lose")
+        g.perform(.openMenu)
+        g.perform(.levels)
+        g.perform(.pickLevel(3))
+        XCTAssertEqual(g.progress.level, 3)
+        XCTAssertEqual(g.progress.stars, 1)
+    }
+
     func testResetNeedsTwoTaps() {
         var p = Progress(); p.stars = 4; p.maxLevel = 5; p.level = 5
         let g = Game(progress: p)

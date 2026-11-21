@@ -2,7 +2,7 @@
 /// gestures resolve against the regions of the last frame.
 
 /// Which full screen is showing. The game only runs on `.game`.
-public enum Screen: Sendable, Equatable { case menu, howTo, settings, game }
+public enum Screen: Sendable, Equatable { case menu, howTo, settings, levels, game }
 
 public enum Action: Equatable, Sendable {
     // Menu
@@ -12,6 +12,9 @@ public enum Action: Equatable, Sendable {
     case backToMenu
     case setting(Int)
     case resetProgress
+    /// The level select card (main menu, once a level is cleared), and a tile on it.
+    case levels
+    case pickLevel(Int)
     /// The in-game pause card (the panel's MENU button): RESUME, RESTART LEVEL, MAIN MENU.
     case pause
     case resume
@@ -77,6 +80,12 @@ public struct UIState: Sendable {
     public var tooltip: Tooltip?
     /// Reset needs a second tap before this time.
     public var confirmResetUntil = -1.0
+    /// Leaving a level in progress for another one needs a second tap on the same tile before
+    /// `confirmLevelUntil`.
+    public var confirmLevel: Int?
+    public var confirmLevelUntil = -1.0
+    /// The level select card scrolls to the current level the first time it draws.
+    var focusLevels = false
     public var pressed: Action = .none
     public var pressedUntil = 0.0
     public var hits: [Hit] = []
@@ -470,6 +479,10 @@ extension Game {
         case .howTo: ui.screen = .howTo; ui.scroll = 0; events.append(.tap)
         case .settings: ui.screen = .settings; ui.scroll = 0; ui.confirmResetUntil = -1; events.append(.tap)
         case .backToMenu: ui.screen = .menu; events.append(.tap)
+        case .levels:
+            ui.screen = .levels; ui.scroll = 0; ui.focusLevels = true; ui.confirmLevel = nil
+            events.append(.tap)
+        case .pickLevel(let k): pickLevel(k)
         case .setting(let i):
             switch i {
             case 0: progress.settings.sound.toggle()

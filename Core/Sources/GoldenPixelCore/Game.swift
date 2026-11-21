@@ -235,7 +235,6 @@ public final class Game {
     /// Starts a level as a fresh run: no balls, just enough coins for the first basic ball,
     /// an empty tree, no shards. Stars, settings and lifetime totals carry over.
     func startLevel(_ level: Int) {
-        if progress.level != level { progress.lastClearTime = progress.levelTime }
         progress.level = level
         progress.maxLevel = max(progress.maxLevel, level)
         progress.money = Tuning.startCoins
@@ -256,7 +255,37 @@ public final class Game {
         banners.append(Banner(text: "\(level) \(board.name)", color: Palette.text, life: 2.2, big: false))
     }
 
-    func advanceLevel() { startLevel(progress.level + 1) }
+    func advanceLevel() {
+        progress.lastClearTime = progress.levelTime
+        startLevel(progress.level + 1)
+    }
+
+    /// True while the current level has something to lose: time played or coins earned, and
+    /// its gold still standing.
+    public var levelInProgress: Bool {
+        clearTimer == nil && (progress.levelTime >= 1 || progress.runEarnings > 0)
+    }
+
+    /// A tile on the level select card: any level up to the furthest reached. The current level
+    /// carries on where it was; any other starts as a fresh run. Leaving a level in progress
+    /// takes a second tap on the same tile within 3 seconds.
+    public func pickLevel(_ level: Int) {
+        guard level >= 1, level <= progress.maxLevel else { events.append(.denied); return }
+        if level != progress.level, levelInProgress, ui.confirmLevel != level || time >= ui.confirmLevelUntil {
+            ui.confirmLevel = level
+            ui.confirmLevelUntil = time + 3
+            events.append(.denied)
+            return
+        }
+        ui.confirmLevel = nil
+        ui.sheet = nil; ui.skillsOpen = false; ui.paused = false; ui.confirmingRestart = false
+        if level != progress.level { startLevel(level) }
+        ui.screen = .game
+        events.append(.tap)
+    }
+
+    /// True once the level's gold has been broken (every level below the furthest reached).
+    public func cleared(_ level: Int) -> Bool { level < progress.maxLevel }
 
     /// Starts the current level again from scratch (a fresh run, same layout).
     public func restartLevel() {
@@ -389,14 +418,18 @@ public final class Game {
         // The win is never hidden: the tree or an info sheet closes so you see the gold go,
         // and neither opens again until the next level starts.
         ui.skillsOpen = false; ui.sheet = nil; ui.launch = nil
-        progress.stars += 1
+        // A star for the first clear only: replaying a cleared level (level select) is for fun.
+        // The next level opens now, so leaving during the celebration never loses it.
+        let first = !cleared(board.level)
+        progress.maxLevel = max(progress.maxLevel, board.level + 1)
+        if first { progress.stars += 1 }
         refreshMods()
         for r in 0..<3 {
             rings.append(Ring(x: Double(x) + 0.5, y: Double(y) + 0.5, maxRadius: 8 + Double(r) * 7,
                               life: 0.8 + Double(r) * 0.25, maxLife: 0.8 + Double(r) * 0.25, color: Palette.gold, overFog: true))
         }
         banners.append(Banner(text: "GOLD!", color: Palette.gold, life: Tuning.levelClearPause, big: true))
-        banners.append(Banner(text: "+1 STAR", color: Palette.goldLight, life: Tuning.levelClearPause, big: false))
+        if first { banners.append(Banner(text: "+1 STAR", color: Palette.goldLight, life: Tuning.levelClearPause, big: false)) }
         // The whole level lights up so you can see what you dug through.
         for i in 0..<board.revealed.count where !board.revealed[i] {
             board.revealed[i] = true

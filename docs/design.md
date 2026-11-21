@@ -19,14 +19,18 @@ and pause buttons, and one row per unlocked ball type.
 - **Durability you can count.** One shade is one hit from an unupgraded basic ball, on every
   level; level length comes from each level's coin payout (`Tuning.levelPayout`).
 - **Pause and restart.** The panel's pause button (two bars) opens: RESUME, RESTART LEVEL (asks first),
-  MAIN MENU. The main menu itself is just PLAY/CONTINUE, HOW TO PLAY and SETTINGS.
+  MAIN MENU. The main menu itself is just PLAY/CONTINUE, HOW TO PLAY and SETTINGS, plus LEVELS
+  once a level is cleared.
+- **Level select.** LEVELS lists every level up to the furthest reached. The current level
+  (gold) carries on where it was; any other starts fresh, and leaving a level in progress takes
+  a second tap. Only a level's first clear gives a star, so replays are for fun.
 - **Shards buy the skill tree.** Solid glowing mint shard pixels (one hit each) pay shards; a level's shards add up
   to the whole tree, and deeper shards pay more. You sense a shard through the dark once your
   light gets within 6 cells, but only the two closest show at once.
   The tree holds the general skills and every ball type's upgrades (unlock, damage, speed,
   special, two specialisations).
 - **Break the gold to clear the level.** It's the level's boss: hundreds of hits (400 on level
-  1, x1.5 a level), draining dim from the top as it takes damage. Each gold is a star for good (+5% damage, +10%
+  1, x1.5 a level), draining dim from the top as it takes damage. Each first clear is a star for good (+5% damage, +10%
   coins). Every level starts fresh: coins, shards, tree and balls reset.
 - Levels are 93 to 107 cells across, much bigger than the screen, and take 15 to 25
   minutes (`swift run -c release gp-sim` checks it); the camera starts on the

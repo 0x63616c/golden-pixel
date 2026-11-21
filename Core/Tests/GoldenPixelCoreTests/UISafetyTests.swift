@@ -55,7 +55,7 @@ final class UISafetyTests: XCTestCase {
     /// only read (coins, shards) sit wholly inside the safe area on every screen.
     func testEveryCardIsInsideTheSafeArea() {
         let screens = screens()
-        for name in ["sheet", "pause", "restart", "howto", "settings", "tree", "late", "full"] {
+        for name in ["sheet", "pause", "restart", "howto", "settings", "levelselect", "tree", "late", "full"] {
             let g = Scenes.make(name)
             for (screen, r) in screens {
                 r.render(g)
@@ -196,14 +196,15 @@ final class UISafetyTests: XCTestCase {
         }
     }
 
-    /// The menu keeps its three buttons, and the whole logo, on every screen.
+    /// The menu keeps its four buttons (LEVELS too, once a level is cleared), and the whole
+    /// logo, on every screen.
     func testTheMenuFitsEveryScreen() {
         let g = Scenes.make("menu")
         for (screen, r) in screens() {
             r.render(g)
             let L = g.ui.layout
             let buttons = g.ui.hits.filter { $0.action != .none }
-            XCTAssertEqual(buttons.count, 3, screen)
+            XCTAssertEqual(buttons.count, 4, screen)
             // The logo is the only thing in pure white above the hero button: its top row
             // must be on screen, below the top of the safe area.
             let hero = g.ui.hits.last { $0.action == .play }!.rect

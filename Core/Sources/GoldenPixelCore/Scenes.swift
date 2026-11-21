@@ -1,7 +1,7 @@
 /// Staged game states for previews, screenshots and UI tests. The app opens one with the
 /// launch argument `-GPScene <name>` (DEBUG builds and the screenshot job only).
 public enum Scenes {
-    public static let names = ["menu", "howto", "settings", "start", "early", "mid", "late", "full", "tree", "sheet", "launch", "pause", "restart",
+    public static let names = ["menu", "howto", "settings", "levelselect", "start", "early", "mid", "late", "full", "tree", "sheet", "launch", "pause", "restart",
                                "gold", "zoom", "zoomout", "portrait", "hero", "goldhunt", "aim", "goldbreak"]
 
     /// What a TestFlight build shows in place of the app's real build label.
@@ -12,6 +12,9 @@ public enum Scenes {
         switch name {
         case "menu", "howto", "settings":
             p.maxLevel = 4; p.level = 4; p.stars = 3; p.levelTime = 300; p.totalEarnings = 1
+        case "levelselect":
+            // Ten levels cleared and the eleventh under way: the card scrolls on a phone.
+            p.maxLevel = 11; p.level = 11; p.stars = 10; p.levelTime = 300; p.runEarnings = 900; p.totalEarnings = 1
         case "start":
             break
         case "early":
@@ -49,6 +52,7 @@ public enum Scenes {
         case "menu": g.ui.screen = .menu
         case "howto": g.ui.screen = .howTo
         case "settings": g.ui.screen = .settings
+        case "levelselect": g.perform(.levels); g.ui.pressed = .none
         default: g.ui.screen = .game
         }
         switch name {

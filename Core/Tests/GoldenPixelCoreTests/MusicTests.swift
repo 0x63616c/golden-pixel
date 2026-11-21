@@ -6,7 +6,7 @@ final class MusicTests: XCTestCase {
     func testCueFollowsTheScreenAndTheMusicSetting() {
         let g = Game(seed: 1)
         XCTAssertEqual(g.musicCue, .menu)
-        for screen in [Screen.howTo, .settings] {
+        for screen in [Screen.howTo, .settings, .levels] {
             g.ui.screen = screen
             XCTAssertEqual(g.musicCue, .menu, "\(screen)")
         }

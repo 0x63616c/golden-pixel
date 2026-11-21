@@ -219,8 +219,8 @@ final class RenderTests: XCTestCase {
         r.render(g)
         let L = g.ui.layout, size = r.logoSize
         XCTAssertGreaterThanOrEqual((L.width - size.w) / 2 - Renderer.logoOutline, Tuning.cornerRadius)
-        // Only three buttons on the menu: play, how to play, settings.
+        // Only the hero and one row: levels (once a level is cleared), how to play, settings.
         let actions = g.ui.hits.map(\.action).filter { $0 != .none }
-        XCTAssertEqual(actions.count, 3, "\(actions)")
+        XCTAssertEqual(actions, [.play, .levels, .howTo, .settings])
     }
 }

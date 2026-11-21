@@ -1,4 +1,4 @@
-/// The main menu, how to play, and settings. Behind them, a slow animated field of pixels:
+/// The main menu, how to play, settings, and level select. Behind them, a slow animated field of pixels:
 /// blue blocks drifting in and out of the dark, a few balls bouncing through, and a gold pixel.
 extension Renderer {
     /// The animated pixel field behind the menu screens. Pure function of time.
@@ -151,7 +151,13 @@ extension Renderer {
             s = fitStep(heroes.count - 1, into: bottom - top, height)
         }
         let logo = logoSize(lineGap: lineGaps[s])
-        let bw = logo.w, heroH = heroes[s], rowH = rows[s], gap = gaps[s], logoGap = logoGaps[s]
+        let heroH = heroes[s], rowH = rows[s], gap = gaps[s], logoGap = logoGaps[s]
+        // Once a level is cleared, LEVELS joins the row under the hero; the stack widens past
+        // the logo when three labels need it.
+        var row: [(String, Action, Sprite)] = [("HOW TO PLAY", .howTo, Sprites.info), ("SETTINGS", .settings, Sprites.gear)]
+        if p.maxLevel > 1 { row.insert(("LEVELS", .levels, Sprites.levels), at: 0) }
+        let cell = row.map { PixelFont.measure($0.0) + 7 + 5 + 12 }.max() ?? 0
+        let bw = max(logo.w, row.count * cell + (row.count - 1) * gap)
         let stackH = height(s)
         let x0 = layout.centred(bw, stackH).x
         var y = max(top, min(bottom - stackH, (c.height - stackH) / 2))
@@ -167,9 +173,67 @@ extension Renderer {
         let big = PixelFont.measure(hero, scale: 2) + 24 + 24 <= bw
         button(g, Rect(x0, y, bw, heroH), hero, .play, style: .gold, icon: Sprites.play, tintIcon: true, scale: big ? 2 : 1)
         y += heroH + gap
-        let half = (bw - gap) / 2
-        button(g, Rect(x0, y, half, rowH), "HOW TO PLAY", .howTo, icon: Sprites.info, tintIcon: true)
-        button(g, Rect(x0 + bw - half, y, half, rowH), "SETTINGS", .settings, icon: Sprites.gear, tintIcon: true)
+        let n = row.count, each = (bw - (n - 1) * gap) / n
+        for (j, (label, action, icon)) in row.enumerated() {
+            // The last one ends flush with the hero, whatever the rounding.
+            let x = j == n - 1 ? x0 + bw - each : x0 + j * (each + gap)
+            button(g, Rect(x, y, each, rowH), label, action, icon: icon, tintIcon: true)
+        }
+    }
+
+    // MARK: - Level select
+
+    /// One tile per level up to the furthest reached, in rows. The current level is the gold
+    /// tile (it carries on where it was); cleared levels wear a star; any other tile starts that
+    /// level fresh. Leaving a level in progress asks for a second tap: the tile turns red.
+    func drawLevels(_ g: Game) {
+        let c = canvas, p = g.progress
+        let n = max(1, p.maxLevel)
+        let w = cardWidth(391), inner = w - 2 * (cardPad + 4)
+        let gap = 6, minTile = 66, tileH = layout.short ? 34 : 40
+        let cols = max(2, (inner + gap) / (minTile + gap))
+        let tileW = (inner - (cols - 1) * gap) / cols
+        let rows = (n + cols - 1) / cols
+        let confirming = g.ui.confirmLevel.flatMap { g.time < g.ui.confirmLevelUntil ? $0 : nil }
+        let note = confirming != nil
+            ? "Tap again to leave level \(p.level). Its run is lost."
+            : "Cleared levels start fresh and give no new star."
+        let lines = wrap(note, width: inner)
+        let noteGap = layout.short ? 8 : 12
+        let gridH = rows * tileH + (rows - 1) * gap
+        let contentH = gridH + noteGap + (lines.count - 1) * PixelFont.lineHeight + PixelFont.capHeight
+        if g.ui.focusLevels {
+            // Open with the current level in the middle of the body (menuCard clamps it).
+            g.ui.focusLevels = false
+            let body = layout.safeArea.h - 2 * Renderer.cardMargin - cardChrome
+            let rowY = (p.level - 1) / cols * (tileH + gap)
+            g.ui.scroll = max(0, rowY - (body - tileH) / 2)
+        }
+        let r = menuCard(g, title: "LEVELS", width: w, contentH: contentH)
+        let x0 = r.x + (r.w - (cols * tileW + (cols - 1) * gap)) / 2
+        for k in 1...n {
+            let j = k - 1
+            let tile = Rect(x0 + j % cols * (tileW + gap), r.y + j / cols * (tileH + gap), tileW, tileH)
+            let style: ButtonStyle = confirming == k ? .danger : (k == p.level ? .gold : .secondary)
+            let pressed = g.isPressed(.pickLevel(k))
+            let (fill, edge, ink) = buttonColours(style, pressed: pressed)
+            if let f = fill { box(tile, f, edge: edge) }
+            let dy = pressed ? 1 : 0
+            let sub = confirming == k ? "TAP AGAIN" : LevelSpec.forLevel(k).name
+            let top = tile.y + (tileH - (2 * PixelFont.capHeight + 5 + PixelFont.capHeight) + 1) / 2 + dy
+            centred("\(k)", tile.x + tileW / 2, top, ink, scale: 2)
+            centred(sub, tile.x + tileW / 2, top + 2 * PixelFont.capHeight + 5, style == .secondary ? Palette.text2 : ink)
+            if g.cleared(k) {
+                c.sprite(Sprites.star, tile.maxX - 4 - Sprites.star.width, tile.y + 4 + dy, tint: style == .secondary ? nil : ink)
+            }
+            hit(tile, .pickLevel(k))
+        }
+        var y = r.y + gridH + noteGap
+        for line in lines {
+            centred(line, r.x + r.w / 2, y, confirming != nil ? Palette.text : Palette.muted)
+            y += PixelFont.lineHeight
+        }
+        endMenuCard(g)
     }
 
     // MARK: - Build tag

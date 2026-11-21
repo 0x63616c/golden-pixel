@@ -24,7 +24,7 @@ BUNDLE_ID=co.worldwidewebb.goldenpixel
 SIM_NAME="GP Duo"
 SIM_TYPE=com.apple.CoreSimulator.SimDeviceType.iPhone-Duo
 # The staged scenes every screenshot run captures (see Scenes.names in the core).
-SHOT_SCENES=(menu start mid zoom zoomout sheet launch pause late full tree gold howto settings)
+SHOT_SCENES=(menu start mid zoom zoomout sheet launch pause late full tree gold howto settings levelselect)
 # The App Store screenshots, in listing order (the first one or two carry the page; at most 10).
 # The appstore skill keeps this list current; see docs/release.md for the shot plan.
 STORE_SCENES=(hero aim goldhunt tree goldbreak sheet menu)

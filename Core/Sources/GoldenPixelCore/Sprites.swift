@@ -77,6 +77,8 @@ public enum Sprites {
     public static let haptic = Sprite(["#.###.#", "#.#.#.#", "..#.#..", "..#.#..", "..#.#..", "#.#.#.#", "#.###.#"], ["#": Palette.text])
     public static let glowIcon = Sprite(["#..#..#", ".#...#.", "..###..", "#.###.#", "..###..", ".#...#.", "#..#..#"], ["#": Palette.text])
 
+    /// Level select: a 2 x 2 grid of tiles.
+    public static let levels = Sprite(["###.###", "###.###", "###.###", ".......", "###.###", "###.###", "###.###"], ["#": Palette.text])
     public static let pause = Sprite(Array(repeating: ".##.##.", count: 7), ["#": Palette.text])
     public static let back = Sprite(["...#...", "..#....", ".#.....", "#######", ".#.....", "..#....", "...#..."], ["#": Palette.text])
 
