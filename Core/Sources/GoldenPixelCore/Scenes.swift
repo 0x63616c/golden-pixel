@@ -91,6 +91,10 @@ public enum Scenes {
             let i = g.board.index(g.board.gold.x, g.board.gold.y)
             g.damageCell(i, g.board.hp[i] + 1)
             settle(g, 0.35)
+            // Hold the celebration: the app runs the scene live for seconds before a
+            // screenshot, and the clear pause would otherwise move on to the next level.
+            g.clearTimer = .greatestFiniteMagnitude
+            for k in g.banners.indices { g.banners[k].life = 3600 }
         case "hero":
             // Late game on an active dig: the camera on the busiest stretch of the dig face.
             settle(g, 20)

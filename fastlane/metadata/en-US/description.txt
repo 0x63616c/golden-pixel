@@ -11,7 +11,7 @@ LAUNCH BALLS, WATCH THEM DIG
 
 READ THE BOARD
 • Blocks are one shade of blue, and the shade is how tough they are: deep blue takes many hits, pale blue is one hit from breaking.
-• Fog of war: you only see three cells past open space. The gold glows faintly through the dark, and nearby shards shimmer mint.
+• Fog of war: you only see three cells past open space. Dig close and the gold glows faintly through the dark; nearby shards shimmer mint.
 • Pinch to zoom out over the whole dig, or in close on the balls.
 
 GROW A SKILL TREE
