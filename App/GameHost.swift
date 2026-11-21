@@ -54,7 +54,7 @@ final class GameHost {
         game.update(dt)
         drainEvents()
         music.update(muted ? .off : game.musicCue, now: now)
-        if scene == nil, now - lastSave > 10 { save(); lastSave = now }
+        if scene == nil, now - lastSave > 10 { save(wait: false); lastSave = now }
     }
 
     func touch(_ phase: TouchPhase, _ p: Point, id: Int, now: Double) {
@@ -68,9 +68,11 @@ final class GameHost {
         drainEvents()
     }
 
-    func save() {
+    /// Saves the game. The autosave hands the file to a background queue; leaving the app
+    /// waits for it to be on disk before the app can be suspended.
+    func save(wait: Bool = true) {
         guard scene == nil else { return }
-        SaveStore.save(game.saveFile())
+        SaveStore.save(game.saveFile(), wait: wait)
     }
 
     private func drainEvents() {
@@ -107,7 +109,12 @@ enum SaveStore {
         return nil
     }
 
-    static func save(_ s: SaveFile) {
-        try? SaveCodec.encode(s).write(to: url, options: .atomic)
+    /// Saves are encoded and written one at a time, in the order they were asked for, off the
+    /// main thread.
+    private static let queue = DispatchQueue(label: "co.worldwidewebb.goldenpixel.save", qos: .utility)
+
+    static func save(_ s: SaveFile, wait: Bool) {
+        let write = { _ = try? SaveCodec.encode(s).write(to: url, options: .atomic) }
+        if wait { queue.sync(execute: write) } else { queue.async(execute: write) }
     }
 }
