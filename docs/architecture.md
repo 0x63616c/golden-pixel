@@ -32,8 +32,9 @@ CADisplayLink (MTKView) ──► Game.update(dt) ──► Renderer.render ─�
   A new look for a cell is a change to `LookFrame.look` and `paintCell` together; something
   new on the panel goes in `PanelKey`.
 - **Presentation** (`App/PixelView.swift`, `App/Shaders.metal`): a frame that differs from the
-  last is uploaded as one `rgba8` texture; the present pass reads exact texels (`texture.read`)
-  at a whole-number scale. A frame that came out the same is not uploaded or presented, and
+  last is copied into one `rgba8` texture (on a device the texture sits over a buffer the CPU
+  writes, so there is no upload); the present pass reads exact texels (`texture.read`) at a
+  whole-number scale. A frame that came out the same is not uploaded or presented, and
   nothing is drawn while the app is not active. Bloom is a separate, optional post-pass (off
   by default, and only run when on) so the base image is always pixel-exact.
 - **Grid check.** `GridTests` upscales every staged scene and asserts every N x N block is one

@@ -9,17 +9,17 @@ struct PixelView: UIViewRepresentable {
 }
 
 /// Presents the art-pixel canvas. Every frame the CPU draws the canvas. When it differs from
-/// the last one, it is uploaded as one texture, a small pass blurs its glow channel at art
-/// resolution (only with the glow setting on), and the final pass draws it at an integer scale
-/// with exact texel reads (no filtering) plus the soft glow on top. A frame that came out the
-/// same as the last is not uploaded or presented: the screen already shows it.
+/// the last one, it is copied to where the GPU reads it (`Base`), a small pass blurs its glow
+/// channel at art resolution (only with the glow setting on), and the final pass draws it at
+/// an integer scale with exact texel reads (no filtering) plus the soft glow on top. A frame
+/// that came out the same as the last is not copied or presented: the screen already shows it.
 final class PixelMetalView: MTKView, MTKViewDelegate {
     let host: GameHost
     private let queue: MTLCommandQueue
     private let glowPipeline: MTLRenderPipelineState
     private let presentPipeline: MTLRenderPipelineState
     private let linear: MTLSamplerState
-    private var baseTextures: [MTLTexture] = []
+    private var bases: [Base] = []
     private var glowTexture: MTLTexture?
     private var slot = 0
     private let inflight = DispatchSemaphore(value: 3)
@@ -132,13 +132,10 @@ final class PixelMetalView: MTKView, MTKViewDelegate {
 
         inflight.wait()
         ensureTextures(fit.width, fit.height)
-        slot = (slot + 1) % baseTextures.count
-        let base = baseTextures[slot]
-        let canvas = host.renderer.canvas
-        canvas.pixels.withUnsafeBytes { raw in
-            base.replace(region: MTLRegionMake2D(0, 0, canvas.width, canvas.height), mipmapLevel: 0,
-                         withBytes: raw.baseAddress!, bytesPerRow: canvas.width * 4)
-        }
+        guard !bases.isEmpty else { inflight.signal(); return }
+        slot = (slot + 1) % bases.count
+        bases[slot].fill(from: host.renderer.canvas)
+        let base = bases[slot].texture
         guard let cmd = queue.makeCommandBuffer(), let glow = glowTexture else { inflight.signal(); return }
         cmd.addCompletedHandler { [inflight] _ in inflight.signal() }
 
@@ -177,15 +174,9 @@ final class PixelMetalView: MTKView, MTKViewDelegate {
     }
 
     private func ensureTextures(_ w: Int, _ h: Int) {
-        if let t = baseTextures.first, t.width == w, t.height == h { return }
+        if let t = bases.first?.texture, t.width == w, t.height == h { return }
         guard let device else { return }
-        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: w, height: h, mipmapped: false)
-        d.usage = [.shaderRead]
-        d.storageMode = .shared
-        // Rewritten from the CPU every frame: keeping it in the GPU's own compressed layout
-        // costs more on each upload than it saves on the one read.
-        d.allowGPUOptimizedContents = false
-        baseTextures = (0..<3).compactMap { _ in device.makeTexture(descriptor: d) }
+        bases = (0..<3).compactMap { _ in Base(device, width: w, height: h) }
         let g = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba16Float, width: w, height: h, mipmapped: false)
         g.usage = [.renderTarget, .shaderRead]
         g.storageMode = .private
@@ -216,6 +207,58 @@ final class PixelMetalView: MTKView, MTKViewDelegate {
     override func touchesCancelled(_ touches: Set<UITouch>, with event: UIEvent?) {
         for t in touches { host.touch(.ended, artPoint(t), id: id(t), now: CACurrentMediaTime()) }
     }
+}
+
+/// One frame's pixels where the GPU reads them. The texture sits over a buffer that the CPU
+/// writes straight into, a row at a time: an upload into a texture of its own
+/// (`MTLTexture.replace`) is put into the GPU's layout by the driver on every call, which on
+/// the phone cost more than drawing the board. Where there are no such textures (the
+/// simulator), a texture of its own is filled with `replace` after all.
+private struct Base {
+    let texture: MTLTexture
+    private let buffer: MTLBuffer?
+    private let stride: Int
+
+    init?(_ device: MTLDevice, width: Int, height: Int) {
+        let d = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .rgba8Unorm, width: width, height: height, mipmapped: false)
+        d.usage = [.shaderRead]
+        d.storageMode = .shared
+        let align = max(1, device.minimumLinearTextureAlignment(for: .rgba8Unorm))
+        let stride = (width * 4 + align - 1) / align * align
+        if Base.overBuffers, let b = device.makeBuffer(length: stride * height, options: .storageModeShared),
+           let t = b.makeTexture(descriptor: d, offset: 0, bytesPerRow: stride) {
+            texture = t; buffer = b; self.stride = stride
+        } else if let t = device.makeTexture(descriptor: d) {
+            texture = t; buffer = nil; self.stride = 0
+        } else {
+            return nil
+        }
+    }
+
+    func fill(from canvas: GoldenPixelCore.Canvas) {
+        let row = canvas.width * 4
+        canvas.pixels.withUnsafeBytes { raw in
+            guard let from = raw.baseAddress else { return }
+            guard let buffer else {
+                texture.replace(region: MTLRegionMake2D(0, 0, canvas.width, canvas.height), mipmapLevel: 0,
+                                withBytes: from, bytesPerRow: row)
+                return
+            }
+            let to = buffer.contents()
+            if stride == row {
+                to.copyMemory(from: from, byteCount: row * canvas.height)
+            } else {
+                for y in 0..<canvas.height { (to + y * stride).copyMemory(from: from + y * row, byteCount: row) }
+            }
+        }
+    }
+
+    /// The simulator stops the app on a texture over a buffer the CPU can write.
+    #if targetEnvironment(simulator)
+    private static let overBuffers = false
+    #else
+    private static let overBuffers = true
+    #endif
 }
 
 struct PresentUniforms {
