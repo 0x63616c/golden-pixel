@@ -57,6 +57,11 @@ public enum GameEvent: Equatable, Sendable {
     /// A UI press (button, toggle, tab).
     case tap
     case shardBroken
+    /// A good moment to ask for an App Store rating: the level after a milestone first clear
+    /// (`Tuning.ratingLevels`) has just started. The app shell asks; iOS decides what shows.
+    case ratingMoment
+    /// The settings card's RATE button: the app shell opens the App Store's review page.
+    case rateApp
 }
 
 public final class Game {
@@ -77,6 +82,9 @@ public final class Game {
     var rng: RNG
     var sonarTimer = 0.0
     var goldSeen = false
+    /// A milestone level's gold has just broken for the first time: the next level to start
+    /// says so (`GameEvent.ratingMoment`). Never saved, so quitting mid-celebration skips it.
+    var ratingDue = false
     /// The direction the last ball was aimed (a unit vector); new balls default to it.
     public var lastAim: (x: Double, y: Double) = (0, -1)
     /// Which build this is (e.g. "1.0.0 (202611201445) a1b2c3d"), set by the app shell from its
@@ -261,6 +269,8 @@ public final class Game {
         centreCamera()
         respawnBalls()
         events.append(.levelStart(level))
+        // The win has been seen and the board is fresh: nothing is flying, nothing is lost.
+        if ratingDue { ratingDue = false; events.append(.ratingMoment) }
         banners.append(Banner(text: "\(level) \(board.name)", color: Palette.text, life: 2.2, big: false))
     }
 
@@ -308,6 +318,7 @@ public final class Game {
         let settings = progress.settings
         progress = Progress()
         progress.settings = settings
+        ratingDue = false
         startLevel(1)
         banners.removeAll()
     }
@@ -431,6 +442,7 @@ public final class Game {
         let first = !cleared(board.level)
         progress.maxLevel = max(progress.maxLevel, board.level + 1)
         if first { progress.stars += 1 }
+        if first, Tuning.ratingLevels.contains(board.level) { ratingDue = true }
         refreshMods()
         for r in 0..<3 {
             rings.append(Ring(x: Double(x) + 0.5, y: Double(y) + 0.5, maxRadius: 8 + Double(r) * 7,

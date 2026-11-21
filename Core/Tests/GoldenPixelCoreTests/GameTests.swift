@@ -208,6 +208,56 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(g.progress.maxLevel, 4)
     }
 
+    /// The rating request follows a first clear of level 2 (and 7), and only once the next
+    /// level has started: never over the celebration, never for level 1 or a replay.
+    func testRatingMomentFollowsAMilestoneFirstClearOnceTheNextLevelStarts() {
+        func clear(level: Int, maxLevel: Int) -> Game {
+            var p = Progress(); p.maxLevel = maxLevel; p.level = level; p.stars = maxLevel - 1
+            let (g, _) = play(p, seed: 5)
+            let i = g.board.index(g.board.gold.x, g.board.gold.y)
+            g.damageCell(i, g.board.hp[i] + 1)
+            XCTAssertFalse(g.events.contains(.ratingMoment), "not while GOLD! is on screen")
+            for _ in 0..<Int(Tuning.levelClearPause * 60 + 10) { g.update(1.0 / 60) }
+            XCTAssertEqual(g.progress.level, level + 1)
+            return g
+        }
+        XCTAssertEqual(Tuning.ratingLevels, [2, 7])
+        for level in 1...8 {
+            let g = clear(level: level, maxLevel: level)
+            XCTAssertEqual(g.events.filter { $0 == .ratingMoment }.count, Tuning.ratingLevels.contains(level) ? 1 : 0, "level \(level)")
+            if let asked = g.events.firstIndex(of: .ratingMoment) {
+                XCTAssertGreaterThan(asked, g.events.firstIndex(of: .levelStart(level + 1)) ?? .max)
+            }
+        }
+        XCTAssertFalse(clear(level: 2, maxLevel: 4).events.contains(.ratingMoment), "a replay never asks")
+    }
+
+    /// Wiping everything during the celebration drops the request with the rest.
+    func testResettingProgressDropsAPendingRatingMoment() {
+        var p = Progress(); p.maxLevel = 2; p.level = 2
+        let (g, _) = play(p, seed: 5)
+        let i = g.board.index(g.board.gold.x, g.board.gold.y)
+        g.damageCell(i, g.board.hp[i] + 1)
+        g.resetProgress()
+        XCTAssertEqual(g.progress.level, 1)
+        XCTAssertFalse(g.events.contains(.ratingMoment))
+    }
+
+    /// RATE GOLDEN PIXEL on the settings card asks the app shell for the App Store's review
+    /// page and changes nothing in the game.
+    func testRateButtonOnSettingsAsksForTheReviewPage() {
+        let g = Scenes.make("settings")
+        let r = Renderer()
+        r.render(g)
+        guard let rate = hitRect(g, .rate) else { return XCTFail("no RATE button on the settings card") }
+        let before = g.progress
+        g.handle(.down(centre(rate)))
+        g.handle(.tap(centre(rate)))
+        XCTAssertEqual(g.events.filter { $0 == .rateApp }.count, 1)
+        XCTAssertEqual(g.progress, before)
+        XCTAssertEqual(g.ui.screen, .settings)
+    }
+
     /// Breaking the furthest level's gold opens the next level straight away, so going to the
     /// menu during the celebration never loses it (or lets the star be earned twice).
     func testFirstClearOpensTheNextLevelAtOnce() {

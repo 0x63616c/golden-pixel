@@ -12,6 +12,8 @@ public enum Action: Equatable, Sendable {
     case backToMenu
     case setting(Int)
     case resetProgress
+    /// RATE GOLDEN PIXEL on the settings card: the App Store's review page (`GameEvent.rateApp`).
+    case rate
     /// The level select card (main menu, once a level is cleared), and a tile on it.
     case levels
     case pickLevel(Int)
@@ -500,6 +502,9 @@ extension Game {
                 ui.confirmResetUntil = time + 3
                 events.append(.denied)
             }
+        case .rate:
+            events.append(.tap)
+            events.append(.rateApp)
         case .openMenu:
             ui.screen = .menu
             ui.sheet = nil; ui.skillsOpen = false; ui.paused = false; ui.confirmingRestart = false

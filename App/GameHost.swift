@@ -2,7 +2,7 @@ import Foundation
 import GoldenPixelCore
 import QuartzCore
 
-/// Owns the game, its save file and the platform feedback (haptics, sound, music).
+/// Owns the game, its save file and the platform feedback (haptics, sound, music, the rating prompt).
 @MainActor
 final class GameHost {
     let game: Game
@@ -76,6 +76,12 @@ final class GameHost {
     private func drainEvents() {
         let s = game.progress.settings
         for e in game.events {
+            switch e {
+            // Staged scenes are for screenshots: no system prompt over them.
+            case .ratingMoment: if scene == nil { Rating.ask() }
+            case .rateApp: Rating.openReviewPage()
+            default: break
+            }
             if s.haptics { haptics.play(e) }
             if s.sound, !muted { sound.play(e) }
         }

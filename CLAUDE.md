@@ -10,7 +10,7 @@ Golden Pixel is a native Swift iOS game. Read this before changing anything.
 | `Core/Sources/gp-render` | CLI that renders staged scenes and the app icon to PNG, and the icon's layer SVGs for `ios/AppIcon.icon`. |
 | `Core/Tests` | Unit tests: durability, economy, level generation, fog reveal, camera and gestures, game flow, renderer invariants, the grid check, architecture. |
 | `tools/` | `gridcheck.py` (screenshot grid check), `compare.py` (side-by-side sheets of simulator screenshots), `bake-font.py` (font baking), `bake-music.py` (music trimming, levelling, encoding), font licence. |
-| `App/` | The iOS shell: SwiftUI app, `MTKView` presenter + shaders, touch mapping, save file, haptics, sound, music (`App/Music`, see `docs/music.md`). Thin on purpose. |
+| `App/` | The iOS shell: SwiftUI app, `MTKView` presenter + shaders, touch mapping, save file, haptics, sound, the rating prompt, music (`App/Music`, see `docs/music.md`). Thin on purpose. |
 | `ios/` | XcodeGen `project.yml`, Info.plist, assets, the Icon Composer app icon (`AppIcon.icon`), `ios.sh` (sim, device, archive, screenshots, device comparison). The `.xcodeproj` is generated, never committed. |
 | `fastlane/` | API-key lanes: `setup` (bundle ID, app record, TestFlight group), `beta`, `status`. |
 | `.github/workflows` | `ci.yml` (PR gate), `testflight.yml` (main → TestFlight), `asc-setup.yml`, `pr-conventions.yml`. |

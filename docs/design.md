@@ -27,6 +27,13 @@ and pause buttons, and one row per unlocked ball type.
 - **Pause and restart.** The panel's pause button (two bars) opens: RESUME, RESTART LEVEL (asks first),
   MAIN MENU. The main menu itself is just PLAY/CONTINUE, HOW TO PLAY and SETTINGS, plus LEVELS
   once a level is cleared.
+- **Asking for a rating.** The game asks for an App Store rating twice, with Apple's own
+  prompt: after the first clear of level 2 and of level 7 (`Tuning.ratingLevels`), a second
+  into the next level, when the win has been seen and the fresh board has nothing to lose.
+  Never after level 1, a replay or in a staged scene. iOS shows it at most three times a year
+  and never in a TestFlight build (a build run from Xcode shows it every time). SETTINGS has
+  RATE GOLDEN PIXEL for anyone who wants to without being asked: it opens the App Store's
+  review page (`App/Rating.swift`).
 - **Level select.** LEVELS lists every level up to the furthest reached. The current level
   (gold) carries on where it was; any other starts fresh, and leaving a level in progress takes
   a second tap. Only a level's first clear gives a star, so replays are for fun.

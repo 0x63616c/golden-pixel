@@ -371,13 +371,14 @@ extension Renderer {
                                                 (Sprites.glowIcon, "GLOW", s.glow)]
         // Row and button heights and the gaps, as designed and tight: tight when the card
         // would not fit the screen otherwise.
+        let rowHs = [27, 22], rowGaps = [4, 2], sections = [12, 6], bhs = [27, 23], buttonGaps = [4, 2], noteGaps = [7, 4], tagGaps = [10, 6]
         let tagged = !g.buildLabel.isEmpty
         func content(_ t: Int) -> Int {
-            rows.count * [31, 22][t] + (rows.count - 1) * [5, 2][t] + [18, 6][t] + [27, 23][t] + [9, 4][t] + PixelFont.capHeight
-                + (tagged ? [14, 6][t] + PixelFont.capHeight : 0)
+            rows.count * rowHs[t] + (rows.count - 1) * rowGaps[t] + sections[t] + 2 * bhs[t] + buttonGaps[t] + noteGaps[t] + PixelFont.capHeight
+                + (tagged ? tagGaps[t] + PixelFont.capHeight : 0)
         }
         let t = fitStep(1, into: layout.safeArea.h - 2 * Renderer.cardMargin) { cardChrome + content($0) }
-        let rowH = [31, 22][t], rowGap = [5, 2][t], section = [18, 6][t], bh = [27, 23][t], noteGap = [9, 4][t], tagGap = [14, 6][t]
+        let rowH = rowHs[t], rowGap = rowGaps[t], section = sections[t], bh = bhs[t], noteGap = noteGaps[t], tagGap = tagGaps[t]
         let contentH = content(t)
         let r = menuCard(g, title: "SETTINGS", width: 300, contentH: contentH)
         var y = r.y
@@ -401,6 +402,9 @@ extension Renderer {
             y += rowH + rowGap
         }
         y += section - rowGap
+        // The App Store's review page, for anyone who wants to rate without being asked.
+        button(g, Rect(r.x, y, r.w, bh), "RATE GOLDEN PIXEL", .rate, icon: Sprites.star)
+        y += bh + buttonGaps[t]
         let confirming = g.time < g.ui.confirmResetUntil
         button(g, Rect(r.x, y, r.w, bh), confirming ? "TAP AGAIN TO WIPE EVERYTHING" : "RESET PROGRESS", .resetProgress,
                style: confirming ? .danger : .secondary, icon: Sprites.restart, tintIcon: true)

@@ -224,20 +224,29 @@ def check_compliance():
     proj = (ROOT / "ios" / "project.yml").read_text()
     report("OK" if manifest.exists() and "PrivacyInfo.xcprivacy" in proj else "FAIL",
            "ios/PrivacyInfo.xcprivacy present and listed in project.yml")
-    # Anything that would change the privacy label from "Data Not Collected".
+    # Anything that would change the privacy label from "Data Not Collected". StoreKit is allowed
+    # in App/Rating.swift alone, and only to ask for a rating: nothing there may sell or read.
     risky = re.compile(r"\b(URLSession|NWConnection|import Network|import StoreKit|import AdSupport|"
                        r"import AppTrackingTransparency|import GameKit|import CloudKit|ASIdentifierManager|"
                        r"identifierForVendor|NSUbiquitousKeyValueStore|import FirebaseCore)\b")
+    purchases = re.compile(r"\b(SKPayment\w*|SKProduct\w*|SKReceipt\w*|Product\.|Transaction\.|AppTransaction|"
+                           r"SubscriptionStoreView|StoreView|ProductView|\.purchase\()")
+    rating = "App/Rating.swift"
     hits = []
     for base in (ROOT / "App", ROOT / "Core" / "Sources" / "GoldenPixelCore"):
         for p in base.rglob("*.swift"):
+            rel = str(p.relative_to(ROOT))
             for i, line in enumerate(p.read_text(errors="ignore").splitlines(), 1):
-                if risky.search(line):
-                    hits.append(f"{p.relative_to(ROOT)}:{i}")
+                code = line.split("//")[0]
+                if rel == rating and "import StoreKit" in code:
+                    continue
+                if risky.search(line) or (rel == rating and purchases.search(code)):
+                    hits.append(f"{rel}:{i}")
     if hits:
         report("FAIL", "code may collect data or need a new privacy answer: " + ", ".join(hits[:8]))
     else:
-        report("OK", "no network, ads, tracking, StoreKit or identifier APIs in App/ or the core")
+        report("OK", "no network, ads, tracking, purchase or identifier APIs in App/ or the core "
+                     "(StoreKit only asks for a rating, in App/Rating.swift)")
     for page in ("site/privacy.md", "site/support.md"):
         report("OK" if (ROOT / page).exists() else "FAIL", page)
     report("OK" if (ROOT / "fastlane" / "app_rating_config.json").exists() else "FAIL",

@@ -285,6 +285,10 @@ public enum Tuning {
     public static let sonarIntervals: [Double] = [0, 18, 11, 6]
     public static let radarHintRadius: [Int] = [0, 16, 9, 4]
     public static let levelClearPause = 2.2
+    /// First clears that are followed by a request for an App Store rating: level 2 (a player
+    /// who came back for a second win) and level 7 (the last of the seven places). iOS shows
+    /// its prompt at most three times a year, so there are only two.
+    public static let ratingLevels: Set<Int> = [2, 7]
     public static let maxBalls = 400
     /// Coins at the start of every level: exactly one basic ball, which you place yourself.
     public static let startCoins = 1.0

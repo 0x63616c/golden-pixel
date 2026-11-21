@@ -100,7 +100,7 @@ don't promise offline earnings.
 
 | Question | Answer | Why |
 | --- | --- | --- |
-| App Privacy: data collected? | **No** ("Data Not Collected") | No network code, no analytics, ads or SDKs; the save is `Application Support/golden-pixel/save.json` on device (`App/GameHost.swift`). `tools/appstore.py check` greps for APIs that would change this. |
+| App Privacy: data collected? | **No** ("Data Not Collected") | No network code, no analytics, ads or SDKs; the save is `Application Support/golden-pixel/save.json` on device (`App/GameHost.swift`). `tools/appstore.py check` greps for APIs that would change this. StoreKit is used once, to ask for a rating (`App/Rating.swift`: Apple's prompt and a link to the review page); it sells and reads nothing, and the check fails on any purchase API. |
 | Tracking / IDFA | No | No AdSupport or AppTrackingTransparency; `NSPrivacyTracking = false`. |
 | Export compliance | No non-exempt encryption | `ITSAppUsesNonExemptEncryption = false`; the app makes no network calls. |
 | Content rights: third-party content? | **Yes, with rights** | The Pixel Operator 8 font is CC0 (`tools/fonts/PixelOperator-LICENSE.txt`), and so is every music track (`docs/music.md`). Set in the `release` lane. |
