@@ -49,9 +49,10 @@ and pause buttons, and one row per unlocked ball type.
 - **Flat.** One colour per surface: no highlights, shadows or bevels on cells, sprites,
   cards or buttons. Packed cells read as one surface with no lines between them. Walls are a
   neutral dark grey, never brighter than the blocks, so nothing pale floats in the dark.
-- **Durability is per cell.** Every breakable cell rolls its own starting shade from a seeded
-  table that leans tougher each level. Walls are the only unbreakable cells; the golden pixel
-  and the mint shards are their own kinds.
+- **Deeper is tougher, with patches.** Rock hardens with distance from the spawn, broken up
+  by soft pockets to dig toward and hard clumps to go round. Each level's mix of shades comes
+  from a seeded table that leans tougher each level; only the layout is designed. Walls are
+  the only unbreakable cells; the golden pixel and the mint shards are their own kinds.
 - **Rounded corners.** The Duo's inner screen has heavily rounded corners
   (`Tuning.cornerRadius`): no button or text sits in them, and every button is at least
   `Tuning.minTouch` (22 art px = 44 pt) square. `UISafetyTests` checks both.

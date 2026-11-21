@@ -38,13 +38,14 @@ final class LevelTests: XCTestCase {
         }
     }
 
-    /// Durability is per cell: tiers are rolled independently, so a block matches its
-    /// neighbour's tier about as often as chance says (sum of p squared) and never forms a
-    /// big uniform patch.
-    func testDurabilityIsAPerCellSpeckle() {
+    /// Durability is laid out: rock near the spawn is softer than rock far from it, and blocks
+    /// clump into patches (a block matches its neighbour's tier well above chance) instead of a
+    /// per-cell speckle.
+    func testDurabilityIsDeeperTougherWithPatches() {
         for level in 1...12 {
             let b = LevelGen.make(level: level)
-            let tiers = b.kind.indices.filter { b.kind[$0] == .block }.map { Int(b.tier[$0]) }
+            let blocks = b.kind.indices.filter { b.kind[$0] == .block }
+            let tiers = blocks.map { Int(b.tier[$0]) }
             let chance = (0..<5).reduce(0.0) { acc, t in
                 let f = Double(tiers.filter { $0 == t }.count) / Double(tiers.count)
                 return acc + f * f
@@ -56,16 +57,13 @@ final class LevelTests: XCTestCase {
                     if b.tier[b.index(x + dx, y + dy)] == b.tier[b.index(x, y)] { same += 1 }
                 }
             } }
-            XCTAssertLessThan(Double(same) / Double(pairs), chance + 0.05, "level \(level) looks zoned")
-            // No 4x4 square of blocks shares one tier.
-            for y in 0..<(b.size - 3) { for x in 0..<(b.size - 3) {
-                var tiers = Set<UInt8>(), allBlocks = true
-                for dy in 0..<4 { for dx in 0..<4 {
-                    let i = b.index(x + dx, y + dy)
-                    if b.kind[i] != .block { allBlocks = false } else { tiers.insert(b.tier[i]) }
-                } }
-                if allBlocks { XCTAssertGreaterThan(tiers.count, 1, "level \(level) uniform patch at \(x),\(y)") }
-            } }
+            XCTAssertGreaterThan(Double(same) / Double(pairs), chance + 0.1, "level \(level) looks like a speckle")
+
+            func d(_ i: Int) -> Double { LevelGen.dist(Point(i % b.size, i / b.size), b.spawn) }
+            let byDepth = blocks.sorted { d($0) < d($1) }
+            func mean(_ s: ArraySlice<Int>) -> Double { Double(s.reduce(0) { $0 + Int(b.tier[$1]) }) / Double(s.count) }
+            let third = byDepth.count / 3
+            XCTAssertLessThan(mean(byDepth.prefix(third)) + 0.5, mean(byDepth.suffix(third)), "level \(level): the far third should be tougher")
         }
     }
 
@@ -76,7 +74,7 @@ final class LevelTests: XCTestCase {
             return (0..<5).map { t in Double(tiers.filter { $0 == t }.count) / Double(tiers.count) }
         }
         let f1 = freq(1), w1 = LevelGen.tierWeights(level: 1), t1 = w1.reduce(0, +)
-        for t in 0..<5 { XCTAssertEqual(f1[t], w1[t] / t1, accuracy: 0.06, "tier \(t)") }
+        for t in 0..<5 { XCTAssertEqual(f1[t], w1[t] / t1, accuracy: 0.02, "tier \(t)") }
         func mean(_ f: [Double]) -> Double { f.enumerated().reduce(0) { $0 + Double($1.offset) * $1.element } }
         XCTAssertLessThan(mean(f1), mean(freq(7)))
         XCTAssertLessThan(mean(freq(7)), mean(freq(14)))

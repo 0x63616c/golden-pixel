@@ -240,13 +240,19 @@ public enum Tuning {
     /// tier. Tier t starts t + 1 steps up the colour ladder (t + 2 hits); the palest shade is
     /// the last hit.
     public static let tierHP: [Double] = [2, 3, 4, 5, 6]
-    public static let tierValue: [Double] = [1, 3, 7, 15, 32]
+    public static let tierValue: [Double] = [3, 5, 9, 15, 28]
     /// Coins per break on each campaign level (later levels use the last), set with `gp-sim`
     /// so each level takes a player about 15 to 30 minutes whatever its shape and size.
-    public static let levelPayout: [Double] = [0.4, 0.3, 0.15, 0.25, 0.35, 0.3, 0.3]
+    public static let levelPayout: [Double] = [0.32, 0.3, 0.15, 0.25, 0.35, 0.3, 0.3]
     public static let richMultiplier = 5.0
     /// Odds that a block is rich.
     public static let richChance = 0.02
+    /// Durability layout (`LevelGen.durabilityScores`): how much distance from the spawn
+    /// counts against the patches (0 = patches only, 1 = a pure gradient), the patches' size
+    /// in cells, and the per-cell grain that roughens their edges.
+    public static let durabilityDepthWeight = 0.55
+    public static let durabilityPatchSize = 9
+    public static let durabilityGrain = 0.06
     /// Golden pixel HP on level 1, and its growth per level.
     public static let goldHP = 400.0
     public static let goldHPGrowth = 1.5

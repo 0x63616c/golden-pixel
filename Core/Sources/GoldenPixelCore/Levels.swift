@@ -2,9 +2,10 @@
 /// on a square board sized to fit it; the rest is solid wall, hidden in the fog. Shard pixels
 /// are scattered through it, and their shards add up to the whole skill tree.
 ///
-/// Durability is per cell: every breakable cell rolls its own tier from a seeded, weighted
-/// table that shifts tougher on later levels, so the board is a mixed speckle of durability
-/// colours. Walls are the only unbreakable cells; the golden pixel is its own kind.
+/// Durability is laid out, not rolled: rock gets tougher the further it is from the spawn, with
+/// soft pockets and hard clumps through it (`LevelGen.durabilityScores`). A level's mix of
+/// tiers still follows a weighted table that shifts tougher on later levels. Walls are the only
+/// unbreakable cells; the golden pixel is its own kind.
 
 public enum Shape: String, Sendable, CaseIterable { case blob, canyon, ring, pillars, spiral, labyrinth, core }
 
@@ -159,17 +160,24 @@ public enum LevelGen {
         let g = gold ?? Point(c, c)
         b.gold = g
 
-        // 5. Durability: every breakable cell rolls its own tier, independently, from a weighted
-        // table that leans tougher each level. No zones or clusters: the board is a speckle.
-        // A few cells are rich (sparkling, 5x payout), also rolled per cell.
+        // 5. Durability: deeper is tougher, with patches. Every block gets a score (distance
+        // from the spawn plus smooth noise); the softest-scoring share of the blocks becomes
+        // tier 0, the next share tier 1, and so on, each share sized by the level's tier
+        // weights. So the mix is exactly the table's, and only where it sits is designed.
+        // A few cells are rich (sparkling, 5x payout), rolled per cell.
+        let blocks = (0..<(size * size)).filter { b.kind[$0] == .block }
+        let scores = durabilityScores(b, blocks: blocks, rng: &rng)
+        let ranked = blocks.indices.sorted { scores[$0] < scores[$1] }
         let weights = tierWeights(level: level)
         let total = weights.reduce(0, +)
-        for i in 0..<(size * size) where b.kind[i] == .block {
-            var roll = rng.range(0, total), tier = 0
-            while tier < weights.count - 1 && roll >= weights[tier] { roll -= weights[tier]; tier += 1 }
-            b.tier[i] = UInt8(tier)
-            b.rich[i] = rng.unit() < Tuning.richChance
+        var tier = 0, upTo = weights[0] / total
+        for (rank, k) in ranked.enumerated() {
+            while tier < weights.count - 1, Double(rank) / Double(ranked.count) >= upTo {
+                tier += 1; upTo += weights[tier] / total
+            }
+            b.tier[blocks[k]] = UInt8(tier)
         }
+        for i in blocks { b.rich[i] = rng.unit() < Tuning.richChance }
         b.kind[b.index(g.x, g.y)] = .gold
         b.tier[b.index(g.x, g.y)] = 4
         b.rich[b.index(g.x, g.y)] = false
@@ -193,6 +201,39 @@ public enum LevelGen {
 
         Fog.revealOpen(b, radius: Tuning.revealRadius, at: t)
         return b
+    }
+
+    /// How tough each of `blocks` should be, relative to the others (higher = tougher): its
+    /// straight-line distance from the spawn (0 at the spawn, 1 at the farthest block) blended
+    /// with two octaves of smooth value noise, so there are soft pockets to dig toward and hard
+    /// clumps to go round, plus a little per-cell grain so patch edges aren't clean lines.
+    static func durabilityScores(_ b: Board, blocks: [Int], rng: inout RNG) -> [Double] {
+        let coarse = valueNoise(size: b.size, cell: Tuning.durabilityPatchSize, rng: &rng)
+        let fine = valueNoise(size: b.size, cell: Tuning.durabilityPatchSize / 2, rng: &rng)
+        func depth(_ i: Int) -> Double { dist(Point(i % b.size, i / b.size), b.spawn) }
+        let deepest = max(1, blocks.map(depth).max() ?? 1)
+        let w = Tuning.durabilityDepthWeight
+        return blocks.map { i in
+            let patch = 0.7 * coarse[i] + 0.3 * fine[i]
+            return w * depth(i) / deepest + (1 - w) * patch + Tuning.durabilityGrain * rng.unit()
+        }
+    }
+
+    /// Smooth noise in 0...1 over a size x size board: random values on a lattice `cell`
+    /// cells apart, blended between with smoothstep.
+    static func valueNoise(size: Int, cell: Int, rng: inout RNG) -> [Double] {
+        let g = size / cell + 2
+        let lattice = (0..<(g * g)).map { _ in rng.unit() }
+        func s(_ t: Double) -> Double { t * t * (3 - 2 * t) }
+        var out = [Double](repeating: 0, count: size * size)
+        for y in 0..<size { for x in 0..<size {
+            let ix = x / cell, iy = y / cell
+            let tx = s(Double(x % cell) / Double(cell)), ty = s(Double(y % cell) / Double(cell))
+            let a = lattice[iy * g + ix], c = lattice[iy * g + ix + 1]
+            let d = lattice[(iy + 1) * g + ix], e = lattice[(iy + 1) * g + ix + 1]
+            out[y * size + x] = (a + (c - a) * tx) * (1 - ty) + (d + (e - d) * tx) * ty
+        } }
+        return out
     }
 
     /// Relative odds of tiers 0...4 on a level: mostly soft on level 1, sliding toward the
