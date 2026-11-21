@@ -128,3 +128,6 @@ and is edited in Icon Composer (`open ios/AppIcon.icon`):
   the values above) and run the workflow again.
 - Secrets live only in the `testflight` environment (main branch only): `ASC_KEY_ID`,
   `ASC_ISSUER_ID`, `ASC_KEY_CONTENT`. The key needs the Admin role for cloud signing.
+- Each CI archive leaves an "Apple Development: Created via API" certificate on the account
+  (its key is gone with the runner), and Apple allows ten. The `beta` lane revokes the
+  leftovers before it archives (`revoke_leftover_ci_certificates`).

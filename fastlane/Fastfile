@@ -49,6 +49,20 @@ def deliver_auth
   ENV["ASC_KEY_ID"].to_s.empty? && !ENV["FASTLANE_USER"].to_s.empty? ? { username: ENV["FASTLANE_USER"] } : {}
 end
 
+# Every archive signed with the API key (CI) makes Xcode create an "Apple Development: Created
+# via API" certificate, whose private key is gone with the runner. Apple allows ten, then the
+# archive fails with "Your account has reached the maximum number of certificates". So the
+# leftovers are revoked before each archive. Certificates made by a person have their name as
+# the display name and are never touched.
+def revoke_leftover_ci_certificates
+  return if ENV["ASC_KEY_PATH"].to_s.empty?
+  stale = Spaceship::ConnectAPI::Certificate.all.select do |c|
+    c.certificate_type == "DEVELOPMENT" && c.display_name == "Created via API"
+  end
+  stale.each(&:delete!)
+  UI.message("Revoked #{stale.size} leftover CI development certificate(s)") unless stale.empty?
+end
+
 # The internal "Me" group gets every build; the account holder is its tester.
 def ensure_group(app)
   group = app.get_beta_groups.find { |g| g.name == GROUP }
@@ -140,6 +154,7 @@ platform :ios do
     build = Time.now.utc.strftime("%Y%m%d%H%M").to_i
     latest = latest_testflight_build_number(app_identifier: BUNDLE_ID, initial_build_number: 0).to_i
     UI.user_error!("Build #{build} is not above the latest TestFlight build #{latest}; wait a minute and retry") if build <= latest
+    revoke_leftover_ci_certificates
     sh("../ios/ios.sh", "archive", build.to_s)
     ipa = Dir[File.expand_path("../ios/build/export/*.ipa", __dir__)].first
     UI.user_error!("No .ipa exported") unless ipa
