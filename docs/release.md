@@ -12,7 +12,8 @@ Golden Pixel is **free**: no price, no ads, no in-app purchases, no accounts, no
 | --- | --- | --- |
 | Listing text | `fastlane/metadata/en-US/*.txt` | name, subtitle, keywords, promotional text, description, release notes, support/marketing/privacy URLs |
 | Categories, copyright | `fastlane/metadata/*.txt` | Games > Casual + Action; secondary Entertainment |
-| Review notes | `fastlane/metadata/review_information/notes.txt` | contact details come from `GP_REVIEW_*` in `fastlane/.env` or are entered once by hand |
+| Review notes | `fastlane/metadata/review_information/notes.txt` | the six answers App Review asks a new app for (Guideline 2.1, Information Needed); contact details come from `GP_REVIEW_*` in `fastlane/.env` or are entered once by hand |
+| Review attachment | `fastlane/review/` (gitignored) | the screen recording the notes name; the `metadata` lane uploads the newest file there |
 | Age rating answers | `fastlane/app_rating_config.json` | all "None"/"No": expect **4+** |
 | Privacy label answers | `fastlane/app_privacy_details.json` | "Data Not Collected" (entered by hand, see section 2) |
 | Privacy manifest | `ios/PrivacyInfo.xcprivacy` (in `project.yml`) | no tracking, no data; UserDefaults `CA92.1`, boot-time clock `35F9.1` |
@@ -20,7 +21,7 @@ Golden Pixel is **free**: no price, no ads, no in-app purchases, no accounts, no
 | Privacy policy, support pages | `site/privacy.md`, `site/support.md` (`site/privacy.html` is a styled copy) | live once pushed to `main` (GitHub URLs in the metadata) |
 | Screenshots | `ios/ios.sh appstore` → `fastlane/screenshots/en-US` (gitignored) | `STORE_SCENES` in `ios/ios.sh`; `tools/appstore.py shots` names, orders and strips alpha |
 | Audit | `just appstore-check` (`tools/appstore.py check`) | limits, ASO rules, screenshot sizes/alpha/staleness, privacy, compliance |
-| Lanes | `fastlane/Fastfile` | `appstore_status` (read-only), `metadata` and `release` (write, need `GP_ASC_WRITE=1`) |
+| Lanes | `fastlane/Fastfile` | `appstore_status` and `appstore_rejection` (read-only), `metadata`, `release` and `resubmit` (write, need `GP_ASC_WRITE=1`) |
 
 ## 2. By hand, in App Store Connect / Apple Developer
 

@@ -232,7 +232,7 @@ platform :ios do
     end
   end
 
-  desc "WRITE (GP_ASC_WRITE=1): upload fastlane/metadata and the age rating; shots:true also replaces the screenshots"
+  desc "WRITE (GP_ASC_WRITE=1): upload fastlane/metadata, the age rating and the review attachment; shots:true also replaces the screenshots"
   lane :metadata do |options|
     allow_write!("upload the App Store listing")
     api_key
@@ -258,8 +258,18 @@ platform :ios do
       force: true # skip deliver's HTML preview prompt; the skill shows the user the diff first
     }
     args[:app_review_information] = review unless review.empty?
+    # The review attachment (fastlane/review/, gitignored): the screen recording App Review
+    # asks a new app for. deliver deletes the attachment in App Store Connect when none is
+    # passed, so notes that mention a file are refused while the file is missing.
+    attachment = Dir[File.expand_path("review/*.{mp4,pdf,zip}", __dir__)].max_by { |f| File.mtime(f) }
+    notes = File.read(File.expand_path("metadata/review_information/notes.txt", __dir__))
+    named = notes[/[\w-]+\.(?:mp4|pdf|zip)/]
+    if named && (attachment.nil? || File.basename(attachment) != named)
+      UI.user_error!("The review notes mention #{named}, but fastlane/review/#{named} does not exist")
+    end
+    args[:app_review_attachment_file] = attachment if attachment
     deliver(**args, **deliver_auth)
-    summary("## App Store listing\n- Uploaded metadata#{shots ? " and screenshots" : ""} for #{marketing_version}")
+    summary("## App Store listing\n- Uploaded metadata#{shots ? " and screenshots" : ""}#{attachment ? ", review attachment #{File.basename(attachment)}" : ""} for #{marketing_version}")
   end
 
   desc "WRITE (GP_ASC_WRITE=1): attach build:<number> to the version and submit it for review (released by hand)"
@@ -288,6 +298,49 @@ platform :ios do
       }
     )
     summary("## App Store review\n- Submitted #{marketing_version} (#{build}) for review, manual release")
+  end
+
+  # A rejection lives in the Resolution Center, which only the Apple ID web session can read
+  # (FASTLANE_USER in fastlane/.env), not the API key. Both lanes below log in that way.
+  def review_session
+    Spaceship::ConnectAPI.login(ENV.fetch("FASTLANE_USER"), use_portal: false, use_tunes: true)
+    [Spaceship::ConnectAPI::App.find(BUNDLE_ID), Spaceship::ConnectAPI.client.tunes_request_client]
+  end
+
+  desc "Read-only: each review submission, its state, and App Review's messages with the rejection reasons"
+  lane :appstore_rejection do
+    app, asc = review_session
+    asc.get("v1/apps/#{app.id}/reviewSubmissions", { limit: 20 }).body["data"].each do |sub|
+      a = sub["attributes"]
+      summary("## Review submission #{a["state"]} (submitted #{a["submittedDate"]})")
+      asc.get("v1/resolutionCenterThreads", { "filter[reviewSubmission]" => sub["id"] }).body["data"].each do |thread|
+        body = asc.get("v1/resolutionCenterThreads/#{thread["id"]}/resolutionCenterMessages", { include: "rejections,fromActor", limit: 50 }).body
+        Array(body["included"]).select { |i| i["type"] == "reviewRejections" }.each do |r|
+          Array(r["attributes"]["reasons"]).each { |x| summary("- Reason #{x["reasonSection"]}: #{x["reasonDescription"]}") }
+        end
+        body["data"].each do |m|
+          from = m.dig("relationships", "fromActor", "data", "id")
+          UI.message("#{from}, #{m["attributes"]["createdDate"]}:\n#{m["attributes"]["messageBody"].to_s.gsub(/<[^>]+>/, "")}")
+        end
+      end
+    end
+  end
+
+  desc "WRITE (GP_ASC_WRITE=1): send a rejected submission back to App Review (after `metadata`, and a new build if one is needed)"
+  lane :resubmit do
+    allow_write!("resubmit for App Store review")
+    app, asc = review_session
+    sub = asc.get("v1/apps/#{app.id}/reviewSubmissions", { "filter[state]" => "UNRESOLVED_ISSUES", limit: 5 }).body["data"].first
+    UI.user_error!("No rejected (UNRESOLVED_ISSUES) review submission: see appstore_rejection") unless sub
+    # Submitting with the item still REJECTED answers 409 "Version is not ready to be submitted
+    # yet": every rejected item is marked resolved first.
+    asc.get("v1/reviewSubmissions/#{sub["id"]}/items", { limit: 50 }).body["data"].each do |item|
+      next unless item["attributes"]["state"] == "REJECTED"
+      asc.patch("v1/reviewSubmissionItems/#{item["id"]}", { data: { type: "reviewSubmissionItems", id: item["id"], attributes: { resolved: true } } })
+    end
+    state = asc.patch("v1/reviewSubmissions/#{sub["id"]}", { data: { type: "reviewSubmissions", id: sub["id"], attributes: { submitted: true } } })
+      .body.dig("data", "attributes", "state")
+    summary("## App Store review\n- Resubmitted #{marketing_version}: #{state}")
   end
 
   # The iOS 27 creative asset: marketing/assets/appstore-creative-5244x2950.png (made by

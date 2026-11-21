@@ -1,5 +1,29 @@
-Golden Pixel is a free single-player game with no account, no sign-in, no network access, no ads and no in-app purchases. No demo account is needed.
+Reply to the Guideline 2.1 "Information Needed" request of November 21, 2026. The numbers match the request.
 
-How to play: tap PLAY. Hold an open (dark, empty) spot on the board, pull back and release to launch a ball; balls break the blue blocks and earn coins. Buy more balls from the panel on the right. Mint shards buy skills in the TREE. Break the golden pixel to finish the level.
+1. SCREEN RECORDING
+Attached to this App Review Information section: golden-pixel-review.mp4 (2 minutes, the submitted build 1.0.0 (202611210125)). It starts on the Home Screen, launches the app and shows the typical flow: the main menu, HOW TO PLAY, starting level 1, launching a ball, a ball's info card and buying a second ball, zooming out and in, collecting a mint shard, buying a skill in the skill tree, the pause card, the main menu, SETTINGS, and continuing the level. The app has no account registration, login or account deletion, no user-generated content and no paid content or features, so there are no such flows to show.
 
-The app is designed for the inner display of iPhone Duo and runs landscape only. On other iPhones it is letterboxed so every art pixel stays on a whole-number device pixel grid; the black bars are intentional.
+2. PURPOSE AND AUDIENCE
+Golden Pixel is a single-player casual game, an idle brick breaker. The player launches balls that bounce through a buried map and break its blocks one pixel at a time. Every block pays coins for more balls, every break pushes the fog back, and the level ends when the balls find and break its golden pixel. Its value is entertainment: a calm game for short sessions with no ads, no purchases and no accounts. It is for a general audience of casual and idle-game players (age rating 4+). It is not directed at children and is not in the Kids category.
+
+3. SETUP AND ACCESS
+There is nothing to set up: no account, sign-in, demo credentials, sample files or network connection. Every feature is available offline from the first launch.
+- Open the app (landscape only) and tap PLAY. HOW TO PLAY on the menu explains the rules.
+- Hold an open (dark, empty) spot on the board, pull back and release to launch a ball. Balls keep bouncing by themselves, break the blue blocks and earn coins.
+- Buy more balls from the panel on the right. Tap a ball there for its info card.
+- Mint shards found in the rock buy skills: tap TREE.
+- Pinch to zoom, drag to move the camera.
+- Break the golden pixel to finish the level. LEVELS on the menu replays any level reached.
+- The pause button leads to RESUME, RESTART LEVEL and MAIN MENU. SETTINGS has SOUND, MUSIC, HAPTICS, GLOW and RESET PROGRESS.
+The app is iPhone only. It is designed for the inner display of iPhone Duo and lays the same interface out on every other iPhone.
+
+4. EXTERNAL SERVICES
+None. The app makes no network requests and contains no third-party SDKs: no data providers, authentication, payment processors, analytics, ads or AI services. It uses Apple system frameworks only. Progress is saved in a file on the device, and no data is collected.
+
+5. REGIONAL DIFFERENCES
+None. The app has no region-specific features or content and works the same in every region. It is in English only.
+
+6. REGULATED INDUSTRY AND THIRD-PARTY MATERIAL
+The app is not in a regulated industry. Its code, game design and artwork are the developer's own work. The only third-party material is released under CC0 1.0 (public domain dedication), which allows commercial use without permission or credit:
+- Font: Pixel Operator 8 by Jayvee Enaguas (HarvettFox96), CC0 1.0.
+- Music: eleven tracks, each CC0, from opengameart.org and freemusicarchive.org, by Pro Sensory, vitalezzz, Loyalty Freak Music, congusbongus, Fupi, cynicmusic and yd. Every track with its source page: https://github.com/0x63616c/golden-pixel/blob/main/docs/music.md

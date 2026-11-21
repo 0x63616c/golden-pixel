@@ -12,6 +12,7 @@ fastlane/report.xml
 fastlane/Preview.html
 fastlane/test_output/
 fastlane/screenshots/
+fastlane/review/
 vendor/bundle/
 .DS_Store
 .claude/worktrees/

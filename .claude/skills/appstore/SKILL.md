@@ -1,6 +1,6 @@
 ---
 name: appstore
-description: Release Golden Pixel on the App Store: audit the listing against App Store Connect, regenerate screenshots, update metadata and keywords, pick a TestFlight build, then upload and submit (the request itself is the yes). Use when the user says "App Store release", "submit for review", "update the listing", "new screenshots" or "keywords/ASO".
+description: Release Golden Pixel on the App Store: audit the listing against App Store Connect, regenerate screenshots, update metadata and keywords, pick a TestFlight build, then upload and submit (the request itself is the yes); read a rejection, answer it and resubmit. Use when the user says "App Store release", "submit for review", "update the listing", "new screenshots", "keywords/ASO" or "Apple rejected the app".
 ---
 
 # App Store release
@@ -17,6 +17,7 @@ Golden Pixel is free: no price, ads or purchases. Price (Free, USA base), availa
 just appstore-check            # local audit: tools/appstore.py check (add --online for the URLs)
 just appstore-status           # read-only App Store Connect state: bundle exec fastlane ios appstore_status
 just appstore-shots            # simulators -> fastlane/screenshots/en-US (ios/ios.sh appstore)
+fastlane ios appstore_rejection   # read-only: App Review's messages and rejection reasons (see "Rejected")
 ```
 
 `appstore-status` needs `ASC_KEY_ID`, `ASC_ISSUER_ID` and `ASC_KEY_CONTENT` in `fastlane/.env` (gitignored) or the environment. The key is in 1Password, item `App Store Connect API` (Private vault); pass it on the one command, never print it:
@@ -77,7 +78,7 @@ Run it (the `/appstore` request is the yes; see Gates), then report the metadata
 GP_ASC_WRITE=1 bundle exec fastlane ios metadata shots:true   # shots:false when screenshots are current
 ```
 
-`shots:true` replaces every screenshot in App Store Connect with the local set. Then rerun `just appstore-status`. Done when it shows the new text, a screenshot count per class that matches `fastlane/screenshots/en-US`, and an age rating.
+`shots:true` replaces every screenshot in App Store Connect with the local set. The lane also uploads the newest file in `fastlane/review/` (gitignored) as the App Review attachment, and removes the attachment in App Store Connect when that folder is empty. Its options table prints the `GP_REVIEW_*` contact: never quote that output. Then rerun `just appstore-status`. Done when it shows the new text, a screenshot count per class that matches `fastlane/screenshots/en-US`, and an age rating.
 
 ## 6. Hand steps
 
@@ -109,6 +110,27 @@ On failure use the title `App Store submission failed` (tag `warning`) and the e
 Version already `WAITING_FOR_REVIEW` with an older build (a resubmit): cancel it before step 5, from a scratch Fastfile: list `v1/apps/<app id>/reviewSubmissions`, PATCH `v1/reviewSubmissions/<id>` with `attributes: { canceled: true }`, and wait until it reads `COMPLETE` (~20 s). Then upload the listing and run `release` with the new build.
 
 `App submission blocked - Cannot submit version due to unfulfilled compliance requirement` hides the real reason: POST `v1/reviewSubmissionItems` yourself and read `meta.associatedErrors` (codes like `STATE_ERROR.PPM.compliance.form.<FORM>...NEW_APP_SUBMISSION_BLOCK`). `SECURITY...` and `AIGENERATE...` forms are mainland China's AI-content and security declarations (from November 2026): Golden Pixel is not sold in China (`CHN` unavailable; games there need a license anyway), which clears them. Review usually takes a day or two. After approval the version waits for the user to press **Release This Version**.
+
+## Rejected
+
+`appstore_status` shows `REJECTED`. Read why before changing anything: `fastlane ios appstore_rejection` (needs the Apple ID session of `FASTLANE_USER`; the API key cannot read the Resolution Center). Fix what the message asks for, upload it with `metadata` (step 5), attach a new build only if the fix is in the app, then `GP_ASC_WRITE=1 fastlane ios resubmit`. It marks the rejected item resolved and sends the same submission back; `release` refuses while a submission has unresolved issues. Fixing a rejection Calum asked you to fix is the yes for both writes. Notify as in step 7.
+
+**Guideline 2.1, Information Needed** (2026-11-21, the first submission; sent to new apps, no bug named): Apple wants six answers in the review notes and a screen recording that starts with launching the app. The answers are in `fastlane/metadata/review_information/notes.txt`, numbered like the request: keep them true to the build (services, third-party material, what each screen is called). The notes name the attachment's file, and `metadata` refuses to run while that file is missing from `fastlane/review/`.
+
+The recording: Apple asks for a physical device. With the Duo plugged in and unlocked, AXe (`axe list-devices`, `axe record-video`) drives and records it; without it, Calum's call on 2026-11-21 was a simulator recording, and the notes then describe what the video shows without naming a device. `review-recording.sh` in this folder makes it:
+
+```sh
+git worktree add --detach .claude/worktrees/review <commit of the submitted build>   # the build label must match the submission
+U=$(xcrun simctl create "GP Review" com.apple.CoreSimulator.SimDeviceType.iPhone-Duo)   # private: never the shared GP sims
+(cd .claude/worktrees/review/ios && xcodegen generate --quiet && xcodebuild -project GoldenPixel.xcodeproj -scheme GoldenPixel \
+  -configuration Release -sdk iphonesimulator -destination "platform=iOS Simulator,id=$U" -derivedDataPath build/sim \
+  CODE_SIGNING_ALLOWED=NO -skipPackagePluginValidation GP_COMMIT=<short sha> CURRENT_PROJECT_VERSION=<build number> build)
+xcrun simctl boot $U && xcrun simctl bootstatus $U -b; axe hinge set open --udid $U    # retry the hinge once if it reports an inconsistent layout
+.claude/skills/appstore/review-recording.sh $U .claude/worktrees/review/ios/build/sim/Build/Products/Release-iphonesimulator/GoldenPixel.app <scratchpad>/take.mp4
+ffmpeg -i <scratchpad>/take.mp4 -an -vf "scale=1426:-2:flags=area,fps=30" -c:v libx264 -preset slow -crf 21 -pix_fmt yuv420p -movflags +faststart fastlane/review/golden-pixel-review.mp4
+```
+
+Look at the take before uploading (`ffmpeg -i take.mp4 -vf "fps=1/4,scale=480:-1,tile=5x3" -frames:v 1 sheet.png`), then delete the simulator and the worktree. Two things went wrong on the first take: the app played its music through the Mac's speakers (an icon tap passes no `-GPMute`; the script now sets it in the simulator's global defaults and stops if a track is open), and every simulator on the Mac was shut down mid-recording by something outside the session. A take shorter than about two minutes was cut off: record again.
 
 ## 8. Wrap up
 
