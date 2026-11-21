@@ -94,9 +94,14 @@ public enum SaveCodec {
     }
 
     public static func snapshot(_ b: Board, fresh: Board) -> BoardSave {
+        snapshot(b, breakable: fresh.kind.map(\.breakable))
+    }
+
+    /// The same, from which cells of the freshly generated level were breakable.
+    public static func snapshot(_ b: Board, breakable: [Bool]) -> BoardSave {
         var broken: [Int] = [], damaged: [Int: Double] = [:], revealed: [Int] = []
         for i in 0..<b.kind.count {
-            if fresh.kind[i].breakable && b.kind[i] == .empty { broken.append(i) }
+            if breakable[i] && b.kind[i] == .empty { broken.append(i) }
             else if b.kind[i].breakable, b.hp[i] < b.maxHP[i] { damaged[i] = b.hp[i] }
             if b.revealed[i] { revealed.append(i) }
         }

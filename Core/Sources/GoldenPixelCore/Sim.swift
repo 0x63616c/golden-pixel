@@ -26,6 +26,9 @@ extension Game {
     // MARK: Balls
 
     func stepBalls(_ dt: Double) {
+        // Every ball of a type flies at the same speed, and working it out reads the tree by
+        // name: once per run of one type, not once per ball.
+        var pace: (kind: BallKind, mods: Double, speed: Double)?
         for i in balls.indices {
             var b = balls[i]
             if b.kind == .ghost {
@@ -42,7 +45,8 @@ extension Game {
                     }
                 }
             }
-            var remaining = speed(b.kind) * dt
+            if pace?.kind != b.kind || pace?.mods != mods.speed { pace = (b.kind, mods.speed, speed(b.kind)) }
+            var remaining = (pace?.speed ?? 0) * dt
             while remaining > 0 {
                 let d = min(remaining, 0.2)
                 remaining -= d
@@ -325,7 +329,9 @@ extension Game {
         if target == nil {
             ringSearch: for r in 1...max(1, range) {
                 for dy in -r...r {
-                    for dx in -r...r where (abs(dx) == r || abs(dy) == r) && ahead(dx, dy) {
+                    // Only the ring's own cells, left to right: all of its top and bottom
+                    // rows, the two ends of each row between.
+                    for dx in stride(from: -r, through: r, by: abs(dy) == r ? 1 : 2 * r) where ahead(dx, dy) {
                         let k = board.kindAt(cx + dx, cy + dy)
                         if k.breakable && board.inside(cx + dx, cy + dy) { target = Point(cx + dx, cy + dy); break ringSearch }
                     }

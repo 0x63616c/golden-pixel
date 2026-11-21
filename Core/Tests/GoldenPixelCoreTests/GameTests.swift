@@ -595,4 +595,47 @@ final class GameTests: XCTestCase {
         }
         XCTAssertEqual(g.ui.camera.zoom, 1, "pinching the tree leaves the board alone")
     }
+
+    /// The autosave remembers which cells a level started with instead of generating the level
+    /// again on every save: every save still says exactly what a fresh level would.
+    func testEverySaveMatchesAFreshlyGeneratedLevel() {
+        let g = Scenes.make("late")
+        func expected() -> BoardSave { SaveCodec.snapshot(g.board, fresh: LevelGen.make(level: g.board.level)) }
+        XCTAssertEqual(g.saveFile().board, expected())
+        for _ in 0..<240 { g.update(1.0 / 60) }
+        XCTAssertFalse(g.saveFile().board?.broken.isEmpty ?? true)
+        XCTAssertEqual(g.saveFile().board, expected(), "the second save of a level")
+        g.startLevel(2)
+        for _ in 0..<60 { g.update(1.0 / 60) }
+        XCTAssertEqual(g.saveFile().board, expected(), "another level")
+        XCTAssertEqual(g.saveFile().board?.level, 2)
+    }
+
+    /// The sniper looks ring by ring, walking only each ring's own cells: it still turns
+    /// toward the first breakable cell ahead that a scan of the whole square would find.
+    func testSniperAimsAtTheFirstPixelAScanOfEachRingFinds() {
+        let g = Scenes.make("late")
+        let b = g.board
+        let range = min(24, Int(g.special(.sniper)))
+        var rng = RNG(seed: 3), aimed = 0
+        for _ in 0..<400 {
+            let x = rng.range(1, Double(b.size - 1)), y = rng.range(1, Double(b.size - 1))
+            let a = rng.range(0, 2 * Double.pi)
+            var ball = Ball(kind: .sniper, x: x, y: y, vx: cos(a), vy: sin(a))
+            let cx = Int(x.rounded(.down)), cy = Int(y.rounded(.down))
+            var target: Point?
+            search: for r in 1...max(1, range) {
+                for dy in -r...r { for dx in -r...r where (abs(dx) == r || abs(dy) == r) && Double(dx) * ball.vx + Double(dy) * ball.vy > 0 {
+                    if b.inside(cx + dx, cy + dy), b.kindAt(cx + dx, cy + dy).breakable { target = Point(cx + dx, cy + dy); break search }
+                } }
+            }
+            g.aim(&ball, fromX: x, fromY: y)
+            guard let t = target else { XCTAssertEqual(ball.vx, cos(a)); XCTAssertEqual(ball.vy, sin(a)); continue }
+            let dx = Double(t.x) + 0.5 - x, dy = Double(t.y) + 0.5 - y, len = (dx * dx + dy * dy).squareRoot()
+            guard len > 0.01 else { continue }
+            XCTAssertEqual(ball.vx, dx / len); XCTAssertEqual(ball.vy, dy / len)
+            aimed += 1
+        }
+        XCTAssertGreaterThan(aimed, 100)
+    }
 }

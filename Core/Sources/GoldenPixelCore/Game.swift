@@ -113,8 +113,16 @@ public final class Game {
     // MARK: - Save
 
     public func saveFile() -> SaveFile {
-        SaveFile(progress: progress, board: SaveCodec.snapshot(board, fresh: LevelGen.make(level: board.level)))
+        // A level is generated the same way every time, so which of its cells started out
+        // breakable is worked out once per level, not on every autosave.
+        if freshBreakable?.level != board.level || freshBreakable?.cells.count != board.kind.count {
+            freshBreakable = (board.level, LevelGen.make(level: board.level).kind.map(\.breakable))
+        }
+        return SaveFile(progress: progress, board: SaveCodec.snapshot(board, breakable: freshBreakable?.cells ?? []))
     }
+
+    /// The cells of level `level` that were breakable when it was generated (`saveFile`).
+    private var freshBreakable: (level: Int, cells: [Bool])?
 
     /// Restores a save. Nothing happens while the game is closed: it picks up where it stopped.
     public func load(_ s: SaveFile) {
