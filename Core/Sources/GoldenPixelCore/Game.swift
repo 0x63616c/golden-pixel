@@ -13,6 +13,15 @@ public struct Ball: Sendable {
     /// The last few art-pixel positions, newest first, for the trail.
     public var trail: [Point] = []
     var trailTimer: Double = 0
+    /// Where and which way the ball left its last few wall bounces (`Tuning.loopMemory` of
+    /// them), newest last. Hitting a pixel empties it. A bounce that matches one of these
+    /// means the ball is going round in a loop that touches only walls.
+    var wallBounces: [WallBounce] = []
+}
+
+/// A ball as it left a wall: its position in cells and its direction.
+struct WallBounce: Sendable {
+    var x: Double, y: Double, vx: Double, vy: Double
 }
 
 public struct Particle: Sendable {

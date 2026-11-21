@@ -237,6 +237,11 @@ public enum Tuning {
     /// Ball diameter is half a cell: a 5x5 sprite (odd, so it has a true centre pixel) on a
     /// 10x10 block.
     public static let ballRadius = 0.25
+    /// How many of its latest wall bounces a ball remembers: the longest wall-only loop (in
+    /// bounces) that gets noticed and broken.
+    public static let loopMemory = 16
+    /// The most a ball caught in a wall-only loop is turned, either way, in radians (3.4 degrees).
+    public static let loopNudge = 0.06
     /// Art pixels per smashable block.
     public static let cellPixels = 10
     /// Durability of each tier, in hits from an unupgraded basic ball (one per shade). Tier t

@@ -8,7 +8,7 @@ Golden Pixel is a native Swift iOS game. Read this before changing anything.
 | --- | --- |
 | `Core/Sources/GoldenPixelCore` | The whole game: rules, levels, fog, economy, sim, UI layout, and the CPU rasteriser. Pure Swift, no Apple UI frameworks (a test enforces it), so it builds and tests on Linux. |
 | `Core/Sources/gp-render` | CLI that renders staged scenes and the app icon to PNG, and the icon's layer SVGs for `ios/AppIcon.icon`. |
-| `Core/Tests` | Unit tests: durability, economy, level generation, fog reveal, camera and gestures, game flow, renderer invariants, the grid check, architecture. |
+| `Core/Tests` | Unit tests: durability, economy, level generation, fog reveal, camera and gestures, game flow, ball physics, renderer invariants, the grid check, architecture. |
 | `tools/` | `gridcheck.py` (screenshot grid check), `compare.py` (side-by-side sheets of simulator screenshots), `bake-font.py` (font baking), `bake-music.py` (music trimming, levelling, encoding), font licence. |
 | `App/` | The iOS shell: SwiftUI app, `MTKView` presenter + shaders, touch mapping, save file, haptics, sound, the rating prompt, music (`App/Music`, see `docs/music.md`). Thin on purpose. |
 | `ios/` | XcodeGen `project.yml`, Info.plist, assets, the Icon Composer app icon (`AppIcon.icon`), `ios.sh` (sim, device, archive, screenshots, device comparison). The `.xcodeproj` is generated, never committed. |

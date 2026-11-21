@@ -2,7 +2,7 @@
 /// Physics runs in float cell units; the renderer snaps everything to the art grid.
 
 extension Game {
-    /// Advances the game by `dt` seconds (clamped, so a stall never tunnels balls).
+    /// Advances the game by `dt` seconds (clamped, so a stall is not played back as one long step).
     public func update(_ dt: Double) {
         let dt = min(max(0, dt), 1.0 / 20)
         time += dt
@@ -66,65 +66,166 @@ extension Game {
         return k != .empty
     }
 
+    /// Flies a ball `d` cells along its direction, bouncing at the exact point where it first
+    /// touches something. The touch is found from the path, not from where a step happens to
+    /// end, so a shot bounces the same way at any frame rate and any ball speed.
     func move(_ b: inout Ball, _ d: Double) {
-        let r = Tuning.ballRadius
-        var nx = b.x + b.vx * d, ny = b.y + b.vy * d
         let phasing = b.phaseLeft > 0
-        var bestPen = 0.0, bestN = (0.0, 0.0), bestCell = -2
-        for cy in Int((ny - r).rounded(.down))...Int((ny + r).rounded(.down)) {
-            for cx in Int((nx - r).rounded(.down))...Int((nx + r).rounded(.down)) {
-                let inside = board.inside(cx, cy)
-                let k: CellKind = inside ? board.kind[board.index(cx, cy)] : .wall
-                if k == .empty { continue }
-                let px = min(max(nx, Double(cx)), Double(cx + 1)), py = min(max(ny, Double(cy)), Double(cy + 1))
-                let dx = nx - px, dy = ny - py, d2 = dx * dx + dy * dy
-                guard d2 < r * r else { continue }
-                if phasing && k != .wall {
-                    let idx = board.index(cx, cy)
-                    if idx != b.lastCell {
-                        b.lastCell = idx
-                        let mult = has("wraith") ? 3.0 : 1.0
-                        _ = damageCell(idx, damage(.ghost) * mult)
-                    }
-                    continue
-                }
-                var n: (Double, Double), pen: Double
-                if d2 > 1e-12 {
-                    let dd = d2.squareRoot()
-                    n = (dx / dd, dy / dd); pen = r - dd
-                } else {
-                    n = (-b.vx, -b.vy); pen = r
-                }
-                if pen > bestPen { bestPen = pen; bestN = n; bestCell = inside ? board.index(cx, cy) : -1 }
+        // Belt and braces: a ball that is inside a solid cell goes back to the spawn.
+        if !phasing, solidAt(b.x, b.y) { toSpawn(&b); return }
+        var left = d
+        // In an inside corner a ball touches two cells at once, so one step can hold a few bounces.
+        var touches = 0
+        while left > 0 {
+            guard let c = firstContact(x: b.x, y: b.y, vx: b.vx, vy: b.vy, reach: left, wallsOnly: phasing) else {
+                b.x += b.vx * left; b.y += b.vy * left
+                break
             }
-        }
-        if bestPen > 0 {
-            let k: CellKind = bestCell >= 0 ? board.kind[bestCell] : .wall
-            var bounce = true
+            b.x += b.vx * c.t; b.y += b.vy * c.t
+            left -= c.t
+            let k: CellKind = c.cell >= 0 ? board.kind[c.cell] : .wall
             if k == .wall {
-                if bestCell >= 0 { revealWall(bestCell) }
+                if c.cell >= 0 { revealWall(c.cell) }
             } else {
-                let broke = hit(bestCell, by: b.kind)
-                if broke && b.pierce > 0 { b.pierce -= 1; bounce = false }
+                b.wallBounces.removeAll(keepingCapacity: true)
+                // A heavy ball carries on through a pixel it breaks.
+                if hit(c.cell, by: b.kind), b.pierce > 0 { b.pierce -= 1; continue }
             }
-            if bounce {
-                let dot = b.vx * bestN.0 + b.vy * bestN.1
-                if dot < 0 { b.vx -= 2 * dot * bestN.0; b.vy -= 2 * dot * bestN.1 }
-                nx += bestN.0 * bestPen
-                ny += bestN.1 * bestPen
-                // A little scatter so balls never settle into a loop.
-                let a = atan2(b.vy, b.vx) + rng.range(-0.06, 0.06)
+            bounce(&b, nx: c.nx, ny: c.ny, offWall: k == .wall)
+            touches += 1
+            if touches == 4 { break }
+        }
+        if phasing { phaseThrough(&b) }
+        if !phasing, solidAt(b.x, b.y) { toSpawn(&b) }
+    }
+
+    func toSpawn(_ b: inout Ball) {
+        b.x = Double(board.spawn.x) + 0.5
+        b.y = Double(board.spawn.y) + 0.5
+        b.wallBounces.removeAll(keepingCapacity: true)
+    }
+
+    /// Mirrors the ball's direction in the surface it touched. Bounces are exact, so a level
+    /// shot stays level; the one exception is a ball going round a loop that touches only
+    /// walls, which would never earn again, so it is turned a little to break the loop.
+    func bounce(_ b: inout Ball, nx: Double, ny: Double, offWall: Bool) {
+        let dot = b.vx * nx + b.vy * ny
+        if dot < 0 { b.vx -= 2 * dot * nx; b.vy -= 2 * dot * ny }
+        // Keep the direction a unit vector: the contact math assumes one, and a rounding error
+        // left in would grow from bounce to bounce. (An exactly level or upright one is untouched.)
+        let len = (b.vx * b.vx + b.vy * b.vy).squareRoot()
+        if len > 0 { b.vx /= len; b.vy /= len }
+        if offWall {
+            // The same place (within half an art pixel) and the same heading as a recent wall bounce.
+            let looping = b.wallBounces.contains {
+                abs($0.x - b.x) < 0.05 && abs($0.y - b.y) < 0.05 && abs($0.vx - b.vx) < 1e-3 && abs($0.vy - b.vy) < 1e-3
+            }
+            if b.wallBounces.count >= Tuning.loopMemory { b.wallBounces.removeFirst() }
+            b.wallBounces.append(WallBounce(x: b.x, y: b.y, vx: b.vx, vy: b.vy))
+            if looping {
+                let a = atan2(b.vy, b.vx) + rng.range(-Tuning.loopNudge, Tuning.loopNudge)
                 b.vx = cos(a); b.vy = sin(a)
-                b.pierce = basePierce(b.kind)
-                if b.kind == .sniper { aim(&b, fromX: nx, fromY: ny) }
             }
         }
-        // Belt and braces: a ball that ends up inside a solid cell goes back to the spawn.
-        if !phasing, solidAt(nx, ny) {
-            nx = Double(board.spawn.x) + 0.5
-            ny = Double(board.spawn.y) + 0.5
+        b.pierce = basePierce(b.kind)
+        if b.kind == .sniper {
+            let mirrored = (b.vx, b.vy)
+            aim(&b, fromX: b.x, fromY: b.y)
+            // An aim through something the ball is touching is no aim at all: keep the bounce.
+            if firstContact(x: b.x, y: b.y, vx: b.vx, vy: b.vy, reach: 0, wallsOnly: false) != nil { (b.vx, b.vy) = mirrored }
         }
-        b.x = nx; b.y = ny
+    }
+
+    /// A phasing ghost damages each pixel it passes over, once as it enters it.
+    func phaseThrough(_ b: inout Ball) {
+        let r = Tuning.ballRadius
+        for cy in Int((b.y - r).rounded(.down))...Int((b.y + r).rounded(.down)) {
+            for cx in Int((b.x - r).rounded(.down))...Int((b.x + r).rounded(.down)) where board.inside(cx, cy) {
+                let idx = board.index(cx, cy)
+                guard board.kind[idx].breakable, idx != b.lastCell else { continue }
+                let px = min(max(b.x, Double(cx)), Double(cx + 1)), py = min(max(b.y, Double(cy)), Double(cy + 1))
+                let dx = b.x - px, dy = b.y - py
+                guard dx * dx + dy * dy < r * r else { continue }
+                b.lastCell = idx
+                _ = damageCell(idx, damage(.ghost) * (has("wraith") ? 3.0 : 1.0))
+            }
+        }
+    }
+
+    /// The first touch on a ball's path: how far along it is, the surface's normal there, and
+    /// the cell touched (-1 for the edge of the board).
+    struct Contact {
+        var t: Double, nx: Double, ny: Double, cell: Int
+    }
+
+    /// The first solid cell that a ball at (x, y), flying along the unit direction (vx, vy),
+    /// touches within `reach` cells. A phasing ghost (`wallsOnly`) touches only walls.
+    func firstContact(x: Double, y: Double, vx: Double, vy: Double, reach: Double, wallsOnly: Bool) -> Contact? {
+        let r = Tuning.ballRadius
+        let ex = x + vx * reach, ey = y + vy * reach
+        // A hair wider than the ball, so a cell it is exactly touching is always looked at.
+        let pad = r + 1e-6
+        // Every ball asks this every step: read the grid once, not once per cell.
+        let size = board.size, kinds = board.kind
+        var best: Contact?
+        for cy in Int((min(y, ey) - pad).rounded(.down))...Int((max(y, ey) + pad).rounded(.down)) {
+            for cx in Int((min(x, ex) - pad).rounded(.down))...Int((max(x, ex) + pad).rounded(.down)) {
+                let inside = cx >= 0 && cy >= 0 && cx < size && cy < size
+                let k: CellKind = inside ? kinds[cy * size + cx] : .wall
+                if k == .empty || (wallsOnly && k != .wall) { continue }
+                guard let c = Game.touch(qx: x - Double(cx) - 0.5, qy: y - Double(cy) - 0.5, vx: vx, vy: vy, r: r, reach: reach),
+                      c.t < (best?.t ?? .infinity) else { continue }
+                best = Contact(t: c.t, nx: c.nx, ny: c.ny, cell: inside ? cy * size + cx : -1)
+            }
+        }
+        return best
+    }
+
+    /// When a circle of radius `r` first touches a unit cell. The circle's center starts at
+    /// (qx, qy), measured from the middle of the cell, and flies along the unit direction
+    /// (vx, vy). Returns the distance flown (at most `reach`) and the cell's outward normal at
+    /// the touch: straight out of a side, or out from a corner through the circle's center.
+    /// A circle already touching the cell only counts if it is heading into it.
+    static func touch(qx: Double, qy: Double, vx: Double, vy: Double, r: Double, reach: Double) -> (t: Double, nx: Double, ny: Double)? {
+        let h = 0.5, slack = 1e-9
+        let ax = max(abs(qx) - h, 0), ay = max(abs(qy) - h, 0)
+        if ax * ax + ay * ay <= (r + slack) * (r + slack) {
+            // Touching already. With its center inside the cell there is no side to bounce off: straight back.
+            let d0 = (ax * ax + ay * ay).squareRoot()
+            var nx = -vx, ny = -vy
+            if d0 > slack { nx = (qx < 0 ? -ax : ax) / d0; ny = (qy < 0 ? -ay : ay) / d0 }
+            return vx * nx + vy * ny < -slack ? (0, nx, ny) : nil
+        }
+        // Where the center crosses into the cell grown by r on every side.
+        let e = h + r
+        var enter = -Double.infinity, exit = Double.infinity, viaX = false
+        if abs(vx) > 1e-12 {
+            let a = (-e - qx) / vx, b = (e - qx) / vx
+            enter = min(a, b); exit = max(a, b); viaX = true
+        } else if abs(qx) >= e { return nil }
+        if abs(vy) > 1e-12 {
+            let a = (-e - qy) / vy, b = (e - qy) / vy
+            if min(a, b) > enter { enter = min(a, b); viaX = false }
+            exit = min(exit, max(a, b))
+        } else if abs(qy) >= e { return nil }
+        guard enter <= exit, exit >= 0, enter <= reach else { return nil }
+        let from = max(enter, 0)
+        let px = qx + vx * from, py = qy + vy * from
+        // Crossing in beside a flat side is a hit on that side.
+        if enter >= 0 {
+            if viaX, abs(py) <= h { return (enter, vx > 0 ? -1 : 1, 0) }
+            if !viaX, abs(px) <= h { return (enter, 0, vy > 0 ? -1 : 1) }
+        }
+        // Otherwise the center is beside a corner, and only that corner's round can be touched.
+        let mx = qx - (px < 0 ? -h : h), my = qy - (py < 0 ? -h : h)
+        let along = mx * vx + my * vy
+        let disc = along * along - (mx * mx + my * my - r * r)
+        guard disc > 0 else { return nil }
+        let t = -along - disc.squareRoot()
+        guard t >= 0, t <= reach else { return nil }
+        let nx = mx + vx * t, ny = my + vy * t
+        let len = (nx * nx + ny * ny).squareRoot()
+        return (t, nx / len, ny / len)
     }
 
     /// A ball hit a block or the gold. Returns true if it broke.

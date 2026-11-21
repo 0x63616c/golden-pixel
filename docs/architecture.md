@@ -31,5 +31,12 @@ CADisplayLink (MTKView) ──► Game.update(dt) ──► Renderer.render ─�
   ball and a drag from there aims it; a long hold on a pixel says what it is. Touches never damage anything. The skill tree uses the
   same camera with levels 0.5, 1 and 2 and half overscroll, and opens framed on the nodes showing
   (`SkillTree.focus`).
+- **Ball physics** (`Sim.swift`): a ball is a circle of `Tuning.ballRadius` cells. Each step
+  finds the first point on its path where it touches a cell (`Game.touch`: a flat side, or a
+  corner's round) and mirrors it there, so a bounce is the same at any frame rate and any ball
+  speed, and cells packed side by side act as one flat wall. Nothing about a bounce is random,
+  with one exception: a ball that repeats one of its last `Tuning.loopMemory` wall bounces is in
+  a loop that touches only walls and would never earn again, so that bounce is turned by up to
+  `Tuning.loopNudge`. `PhysicsTests` holds all of this.
 - **Saves**: versioned JSON in Application Support (`SaveCodec`), autosaved every 10 s and on
   backgrounding; an unreadable save is moved aside, never overwritten.
