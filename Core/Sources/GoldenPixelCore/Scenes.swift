@@ -18,12 +18,12 @@ public enum Scenes {
         case "start":
             break
         case "early":
-            p.money = 180
+            p.money = 55
             p.shards = 2
             p.balls[BallKind.basic.rawValue] = BallProgress(owned: 6)
         case "mid", "sheet", "launch", "pause", "restart", "portrait", "zoom", "zoomout", "aim":
             p.level = 3; p.maxLevel = 3; p.stars = 2
-            p.money = 48_000
+            p.money = 260
             p.shards = 3
             p.skillRanks = ["u-basic": 1, "core": 1, "sharp": 2, "momentum": 2, "u-fast": 1, "u-heavy": 1, "greed": 1, "lantern": 1,
                             "basic-dmg": 2, "basic-spd": 1, "fast-dmg": 1]
@@ -32,18 +32,18 @@ public enum Scenes {
         case "late", "full", "tree", "gold", "hero", "goldhunt", "goldbreak":
             p.level = 6; p.maxLevel = 6
             p.stars = 5
-            p.money = 7_400_000
+            p.money = 640
             p.shards = 6
             p.skillRanks = ["u-basic": 1, "core": 1, "sharp": 5, "momentum": 4, "u-fast": 1, "u-heavy": 1, "u-lightning": 1, "u-bomb": 1,
                             "u-sniper": 1, "greed": 3, "crit": 2, "lantern": 2, "radar": 2, "sonar": 1,
                             "basic-dmg": 5, "basic-spd": 3, "basic-sp": 2, "fast-dmg": 3, "fast-spd": 2, "heavy-dmg": 2, "heavy-spd": 1]
-            p.balls = [BallKind.basic.rawValue: BallProgress(owned: 70), BallKind.fast.rawValue: BallProgress(owned: 40),
-                       BallKind.heavy.rawValue: BallProgress(owned: 24), BallKind.lightning.rawValue: BallProgress(owned: 22),
-                       BallKind.bomb.rawValue: BallProgress(owned: 18), BallKind.sniper.rawValue: BallProgress(owned: 12)]
+            p.balls = [BallKind.basic.rawValue: BallProgress(owned: 45), BallKind.fast.rawValue: BallProgress(owned: 16),
+                       BallKind.heavy.rawValue: BallProgress(owned: 7), BallKind.lightning.rawValue: BallProgress(owned: 3),
+                       BallKind.bomb.rawValue: BallProgress(owned: 2), BallKind.sniper.rawValue: BallProgress(owned: 2)]
             if name == "full" {
                 // Every ball type unlocked: the panel at its fullest.
                 p.skillRanks["u-ghost"] = 1
-                p.balls[BallKind.ghost.rawValue] = BallProgress(owned: 7)
+                p.balls[BallKind.ghost.rawValue] = BallProgress(owned: 2)
             }
         default: break
         }

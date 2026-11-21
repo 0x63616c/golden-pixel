@@ -59,8 +59,10 @@ public struct BallType: Sendable {
     public let blurb: String
     /// One or two lines on what the ball does, for the info sheet.
     public let about: String
-    public let baseCost: Double
-    public let costGrowth: Double
+    /// Every type's first ball costs 1 coin; each one after costs this many coins more than the
+    /// last (`Economy.ballCost`). Strong types take big steps. The tree unlock (shards) is what
+    /// a new type really costs.
+    public let costStep: Double
     /// Cells per second.
     public let speed: Double
     public let damage: Double
@@ -74,31 +76,31 @@ public struct BallType: Sendable {
 
     public static let all: [BallType] = [
         BallType(kind: .basic, name: "Basic", blurb: "Reliable bouncer", about: "Bounces off everything and chips what it hits. Can crit.",
-                 baseCost: 5, costGrowth: 1.3, speed: 9, damage: 1,
+                 costStep: 8, speed: 9, damage: 1,
                  specialName: "Crit", specialBase: 0, specialPerRank: 0.06,
                  specs: [.init(id: "swarm", name: "Swarm", text: "Basic balls cost 40% less"), .init(id: "veteran", name: "Veteran", text: "Basic balls deal 3x damage")]),
         BallType(kind: .fast, name: "Fast", blurb: "Quick light hits", about: "Twice as fast as a basic ball. Sometimes hits twice.",
-                 baseCost: 150, costGrowth: 1.34, speed: 17, damage: 1,
+                 costStep: 20, speed: 17, damage: 1,
                  specialName: "Twin hit", specialBase: 0, specialPerRank: 0.12,
                  specs: [.init(id: "blur", name: "Blur", text: "Fast balls move 60% faster"), .init(id: "flurry", name: "Flurry", text: "Twin hits are twice as likely")]),
         BallType(kind: .heavy, name: "Heavy", blurb: "Pierces what it breaks", about: "Slow and strong. Keeps going through pixels it breaks.",
-                 baseCost: 500, costGrowth: 1.4, speed: 7, damage: 5,
+                 costStep: 60, speed: 7, damage: 5,
                  specialName: "Pierce", specialBase: 1, specialPerRank: 2,
                  specs: [.init(id: "juggernaut", name: "Juggernaut", text: "Pierces without limit"), .init(id: "wrecking", name: "Wrecking", text: "Heavy balls deal 3x damage")]),
         BallType(kind: .lightning, name: "Volt", blurb: "Chains to nearby pixels", about: "Every hit arcs lightning to the nearest pixels.",
-                 baseCost: 1200, costGrowth: 1.44, speed: 10, damage: 1.5,
+                 costStep: 120, speed: 10, damage: 1.5,
                  specialName: "Chains", specialBase: 2, specialPerRank: 2,
                  specs: [.init(id: "storm", name: "Storm", text: "+4 chains, longer reach"), .init(id: "overcharge", name: "Surge", text: "Chains hit 2.5x harder")]),
         BallType(kind: .bomb, name: "Bomb", blurb: "Explodes on impact", about: "Blows up on every hit, damaging a whole area.",
-                 baseCost: 2500, costGrowth: 1.48, speed: 8, damage: 3,
+                 costStep: 250, speed: 8, damage: 3,
                  specialName: "Blast", specialBase: 1.3, specialPerRank: 0.44,
                  specs: [.init(id: "cluster", name: "Cluster", text: "3 extra mini blasts"), .init(id: "nuke", name: "Nuke", text: "Blasts 60% bigger")]),
         BallType(kind: .sniper, name: "Sniper", blurb: "Aims after each bounce", about: "After every bounce it turns toward the nearest pixel.",
-                 baseCost: 5000, costGrowth: 1.52, speed: 14, damage: 4,
+                 costStep: 300, speed: 14, damage: 4,
                  specialName: "Range", specialBase: 8, specialPerRank: 6,
                  specs: [.init(id: "seeker", name: "Seeker", text: "Hunts the golden pixel"), .init(id: "marksman", name: "Marksman", text: "2x damage, +25% crit")]),
         BallType(kind: .ghost, name: "Ghost", blurb: "Phases through pixels", about: "Every few seconds it phases through pixels, hitting each one.",
-                 baseCost: 12000, costGrowth: 1.6, speed: 9, damage: 3,
+                 costStep: 400, speed: 9, damage: 3,
                  specialName: "Phase", specialBase: 0.8, specialPerRank: 0.4,
                  specs: [.init(id: "poltergeist", name: "Poltergeist", text: "Phases twice as often"), .init(id: "wraith", name: "Wraith", text: "3x damage while phasing")]),
     ]
@@ -160,7 +162,7 @@ public struct SkillNode: Sendable {
         .init(id: "critdmg", name: "Brutal", text: "+50% crit damage per rank", cost: 2, ranks: 3, requires: ["crit"], x: -4, y: 4, effect: .critDamage(0.5)),
         .init(id: "momentum", name: "Momentum", text: "+10% ball speed per rank", cost: 1, ranks: 5, requires: ["core"], x: 10, y: 0, effect: .speed(0.1)),
         .init(id: "greed", name: "Greed", text: "+25% coins per rank", cost: 1, ranks: 5, requires: ["core"], x: 0, y: 2, effect: .money(0.25)),
-        .init(id: "cash", name: "Windfall", text: "+500 coins now, per rank", cost: 1, ranks: 5, requires: ["greed"], x: -1, y: 4, effect: .cash(500)),
+        .init(id: "cash", name: "Windfall", text: "+25 coins now, per rank", cost: 1, ranks: 5, requires: ["greed"], x: -1, y: 4, effect: .cash(25)),
         .init(id: "lantern", name: "Lantern", text: "Breaks light up 1 cell further", cost: 1, ranks: 3, requires: ["greed"], x: 1, y: 4, effect: .lantern),
         .init(id: "radar", name: "Radar", text: "Boxes in the golden pixel", cost: 2, ranks: 3, requires: ["lantern"], x: 1, y: 6, effect: .radar),
         .init(id: "sonar", name: "Sonar", text: "The golden pixel pings", cost: 2, ranks: 3, requires: ["radar"], x: 1, y: 8, effect: .sonar),
@@ -170,9 +172,9 @@ public struct SkillNode: Sendable {
     /// one row just above the spine: Basic straight above Core, Heavy above Sharp (Bomb beside
     /// it), Lightning and Fast either side of Momentum (Ghost and Sniper beside them).
     static let ballColumn: [BallKind: (x: Int, requires: [String], cost: Int)] = [
-        .bomb: (-8, ["u-heavy"], 3), .heavy: (-4, ["sharp"], 2), .basic: (0, ["core"], 0),
-        .ghost: (4, ["u-lightning"], 4), .lightning: (8, ["momentum"], 3),
-        .fast: (12, ["momentum"], 2), .sniper: (16, ["u-fast"], 3),
+        .bomb: (-8, ["u-heavy"], 12), .heavy: (-4, ["sharp"], 6), .basic: (0, ["core"], 0),
+        .ghost: (4, ["u-lightning"], 16), .lightning: (8, ["momentum"], 10),
+        .fast: (12, ["momentum"], 3), .sniper: (16, ["u-fast"], 12),
     ]
 
     /// A ball type's branch, growing up from its unlock: damage and speed side by side, then
@@ -236,14 +238,13 @@ public enum Tuning {
     public static let ballRadius = 0.25
     /// Art pixels per smashable block.
     public static let cellPixels = 10
-    /// Durability (in hits from an unupgraded basic ball, one per shade) and payout of each
-    /// tier. Tier t starts t + 1 steps up the colour ladder (t + 2 hits); the palest shade is
-    /// the last hit.
+    /// Durability of each tier, in hits from an unupgraded basic ball (one per shade). Tier t
+    /// starts t + 1 steps up the colour ladder (t + 2 hits); the palest shade is the last hit.
     public static let tierHP: [Double] = [2, 3, 4, 5, 6]
-    public static let tierValue: [Double] = [3, 5, 9, 15, 28]
-    /// Coins per break on each campaign level (later levels use the last), set with `gp-sim`
-    /// so each level takes a player about 15 to 30 minutes whatever its shape and size.
-    public static let levelPayout: [Double] = [0.32, 0.3, 0.15, 0.25, 0.35, 0.3, 0.3]
+    /// Coins for breaking any block (before Greed and stars): one. Every block pays the same,
+    /// so tough rock is only slower to get through, and soft pockets are where the money is.
+    public static let blockValue = 1.0
+    /// A sparkling (rich) block pays this many blocks' worth.
     public static let richMultiplier = 5.0
     /// Odds that a block is rich.
     public static let richChance = 0.02
@@ -256,7 +257,6 @@ public enum Tuning {
     /// Golden pixel HP on level 1, and its growth per level.
     public static let goldHP = 400.0
     public static let goldHPGrowth = 1.5
-    public static let goldValueMultiplier = 40.0
     /// Shard pixels: how many a level hides (their values add up to the whole skill tree), how
     /// tough they are (as a tier), and how far into the dark you can sense them.
     public static let shardsPerLevel = 60
@@ -279,12 +279,14 @@ public enum Tuning {
     /// Fog: cells within this many cells (Chebyshev) of an open cell are visible.
     public static let revealRadius = 3
     public static let goldGlowRadius = 3.5
+    /// The gold glows through the dark only once a revealed cell is this close (Chebyshev).
+    public static let goldSenseRadius = 5
     public static let sonarIntervals: [Double] = [0, 18, 11, 6]
     public static let radarHintRadius: [Int] = [0, 16, 9, 4]
     public static let levelClearPause = 2.2
     public static let maxBalls = 400
     /// Coins at the start of every level: exactly one basic ball, which you place yourself.
-    public static let startCoins = 5.0
+    public static let startCoins = 1.0
     /// Each star (one per golden pixel) adds this much damage and money, for good.
     public static let starDamage = 0.05
     public static let starMoney = 0.1

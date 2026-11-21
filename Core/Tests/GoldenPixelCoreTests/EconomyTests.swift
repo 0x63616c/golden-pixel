@@ -22,6 +22,31 @@ final class EconomyTests: XCTestCase {
         }
     }
 
+    /// Every type's first ball costs 1 coin; after that each type climbs by its own fixed step,
+    /// stronger types by more.
+    func testEveryBallStartsAtOneAndClimbsByItsOwnStep() {
+        for k in BallKind.allCases {
+            XCTAssertEqual(Economy.ballCost(k, owned: 0), 1, "\(k)")
+            XCTAssertEqual(Economy.ballCost(k, owned: 3) - Economy.ballCost(k, owned: 2), k.type.costStep, "\(k)")
+        }
+        XCTAssertLessThan(BallKind.basic.type.costStep, BallKind.heavy.type.costStep)
+        XCTAssertLessThan(BallKind.heavy.type.costStep, BallKind.ghost.type.costStep)
+    }
+
+    /// Every block pays 1 coin, however tough it was (times Greed and stars).
+    func testEveryBlockPaysOneCoin() {
+        let g = Game()
+        let b = g.board
+        var paid: [UInt8: Double] = [:]
+        for i in b.kind.indices where b.kind[i] == .block && !b.rich[i] && paid[b.tier[i]] == nil {
+            let before = g.progress.money
+            g.damageCell(i, b.hp[i] + 1)
+            paid[b.tier[i]] = g.progress.money - before
+        }
+        XCTAssertEqual(paid.count, 5)
+        for (_, v) in paid { XCTAssertEqual(v, Tuning.blockValue * g.mods.money, accuracy: 1e-9) }
+    }
+
     func testSwarmDiscount() {
         XCTAssertEqual(Economy.ballCost(.basic, owned: 5, swarm: true), (Economy.ballCost(.basic, owned: 5) * 0.6).rounded(), accuracy: 1)
     }

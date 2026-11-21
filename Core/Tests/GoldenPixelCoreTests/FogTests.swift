@@ -109,8 +109,15 @@ final class FogTests: XCTestCase {
         XCTAssertLessThan(shards.filter { Fog.shardSensed(b, $0) }.count, shards.count / 2, "but never the whole level")
     }
 
-    func testGoldGlowsOnlyNearTheGold() {
+    func testGoldGlowsOnlyNearTheGoldAndOnlyOnceYouAreClose() {
         let b = LevelGen.make(level: 2)
+        XCTAssertFalse(Fog.goldSensed(b), "a fresh level gives the gold away nowhere")
+        XCTAssertEqual(Fog.goldGlow(b, b.gold.x + 1, b.gold.y, at: 0.6), 0)
+        let r = Tuning.goldSenseRadius
+        b.revealed[b.index(b.gold.x + r + 1, b.gold.y)] = true
+        XCTAssertFalse(Fog.goldSensed(b), "one cell too far")
+        b.revealed[b.index(b.gold.x, b.gold.y - r)] = true
+        XCTAssertTrue(Fog.goldSensed(b))
         XCTAssertGreaterThan(Fog.goldGlow(b, b.gold.x + 1, b.gold.y, at: 0.6), 0)
         XCTAssertEqual(Fog.goldGlow(b, b.gold.x + 6, b.gold.y, at: 0.6), 0)
     }

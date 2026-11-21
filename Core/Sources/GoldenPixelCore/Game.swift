@@ -206,7 +206,7 @@ public final class Game {
             // A new type is ready to place: it becomes the selected ball.
             ui.selected = k
         case .cash(let v):
-            progress.money += v * Economy.levelValueScale(board.level)
+            progress.money += v
         case .ballStat(.heavy, _), .ballSpec(.heavy, _):
             for i in balls.indices where balls[i].kind == .heavy { balls[i].pierce = basePierce(.heavy) }
         default: break
@@ -379,8 +379,7 @@ public final class Game {
         let wasShard = board.kind[i] == .shard
         let tier = Int(board.tier[i])
         let shown = board.revealed[i]
-        var value = Economy.tierValue(tier, level: board.level) * (board.rich[i] ? Tuning.richMultiplier : 1)
-        if wasGold { value *= Tuning.goldValueMultiplier }
+        let value = Tuning.blockValue * (board.rich[i] ? Tuning.richMultiplier : 1)
         earn(value * mods.money)
         board.kind[i] = .empty
         board.hp[i] = 0

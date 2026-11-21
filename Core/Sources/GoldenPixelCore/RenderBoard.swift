@@ -58,7 +58,8 @@ extension Renderer {
         c.clip = nil
         c.fill(vis.x0, vis.y0, vis.x1 - vis.x0, vis.y1 - vis.y0, Palette.black)
         let goldIndex = b.index(b.gold.x, b.gold.y)
-        let goldAlive = b.kind[goldIndex] == .gold
+        // The gold only glows once you've dug within `Tuning.goldSenseRadius` of it.
+        let goldAlive = b.kind[goldIndex] == .gold && Fog.goldSensed(b)
         let shownShards = Set(Fog.shownShards(b))
 
         for y in (vis.y0 / cp)..<min(b.size, (vis.y1 + cp - 1) / cp) {

@@ -17,7 +17,12 @@ and pause buttons, and one row per unlocked ball type.
   to move around; two fingers pan and zoom. Tap the selected row again (or hold any row) for its info sheet. Coins read in
   full (1,800) below a million.
 - **Durability you can count.** One shade is one hit from an unupgraded basic ball, on every
-  level; level length comes from each level's coin payout (`Tuning.levelPayout`).
+  level.
+- **Small, countable coins.** Every block pays 1 coin (a sparkling one 5), before Greed and
+  stars; toughness only costs time, so soft pockets are the money and hard rock is in the
+  way. Every ball type's first ball costs 1 coin, and each one after costs a fixed step more
+  (`BallType.costStep`: basic +8, heavy +60, ghost +400), so prices stay in the hundreds.
+  Unlocking a type in the tree (shards) is what a new type really costs.
 - **Pause and restart.** The panel's pause button (two bars) opens: RESUME, RESTART LEVEL (asks first),
   MAIN MENU. The main menu itself is just PLAY/CONTINUE, HOW TO PLAY and SETTINGS, plus LEVELS
   once a level is cleared.
@@ -32,8 +37,8 @@ and pause buttons, and one row per unlocked ball type.
 - **Break the gold to clear the level.** It's the level's boss: hundreds of hits (400 on level
   1, x1.5 a level), draining dim from the top as it takes damage. Each first clear is a star for good (+5% damage, +10%
   coins). Every level starts fresh: coins, shards, tree and balls reset.
-- Levels are 93 to 107 cells across, much bigger than the screen, and take 15 to 25
-  minutes (`swift run -c release gp-sim` checks it); the camera starts on the
+- Levels are 93 to 107 cells across, much bigger than the screen, and take 8 to 12
+  minutes for the first four levels, then 15 to 25 (`swift run -c release gp-sim` checks it); the camera starts on the
   spawn and pinches between 0.5x, 1x, 2x, 3x and 4x.
 
 ## Rules of the look
@@ -59,7 +64,7 @@ and pause buttons, and one row per unlocked ball type.
 - **Fog of war.** Visible = within 3 cells (Chebyshev) of open space. A level starts as the
   spawn pocket plus a 3-cell border; every break pushes the light 3 cells further, opening
   by dithering each cell in from black. Unrevealed cells are pure black. The gold pulses
-  faintly a few cells into the dark, sensed shards breathe in dim mint; Lantern widens the
+  faintly a few cells into the dark once you've dug within 5 cells of it, sensed shards breathe in dim mint; Lantern widens the
   radius, Radar boxes the gold, Sonar pings.
 - **Type.** Pixel Operator 8 (CC0): 7-pixel caps, proportional. HUD icons are 7 x 7.
 - **Palette.** Black and cool greys, a blue durability ramp, gold for the gold and coins

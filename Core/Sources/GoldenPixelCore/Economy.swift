@@ -15,23 +15,19 @@ public struct BallProgress: Codable, Equatable, Sendable {
 }
 
 public enum Economy {
+    /// The next ball's price when you own `owned` of that type: 1 coin for the first of every
+    /// type, then up by the type's step each time (basic 1, 9, 17, 25 ...; heavy 1, 61, 121 ...).
+    /// Linear, not compounding, so prices stay in the hundreds and read at a glance.
     public static func ballCost(_ k: BallKind, owned: Int, swarm: Bool = false) -> Double {
-        let t = k.type
-        let n = owned
+        let n = Double(owned)
         let discount = (k == .basic && swarm) ? 0.6 : 1
-        return (t.baseCost * pow(t.costGrowth, Double(n)) * discount).rounded()
+        return max(1, ((1 + k.type.costStep * n) * discount).rounded())
     }
 
     /// Durability is the same on every level: one shade of the ladder is one hit point, and an
     /// unupgraded basic ball deals exactly one per hit, so you can count a block's hits by its
     /// colour. Later levels get tougher through their tier mix, not bigger numbers.
     public static func levelHPScale(_ level: Int) -> Double { 1 }
-    /// Coins per break on a level (`Tuning.levelPayout`): the dial that sets how long a level
-    /// takes, since blocks are equally tough everywhere and ball prices don't change.
-    public static func levelValueScale(_ level: Int) -> Double {
-        let t = Tuning.levelPayout
-        return t[min(t.count, max(1, level)) - 1]
-    }
     public static func tierHP(_ tier: Int, level: Int) -> Double { Tuning.tierHP[tier] }
 
     /// The golden pixel: the level's boss, far tougher than any block, and tougher each level.
@@ -47,7 +43,7 @@ public enum Economy {
         let steps = Int((hp / hitUnit(level: level) - 1e-9).rounded(.up))
         return max(0, min(Palette.ladder.count - 1, steps - 1))
     }
-    public static func tierValue(_ tier: Int, level: Int) -> Double { Tuning.tierValue[tier] * levelValueScale(level) }
+
 
     /// Splits the level's shards (the whole tree's price) across its shard pixels as evenly
     /// as whole numbers allow.

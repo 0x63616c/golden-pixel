@@ -63,10 +63,23 @@ public enum Fog {
         return min(1, since / fadeTime)
     }
 
-    /// How strongly the golden pixel glows through the dark at cell (x, y), 0...1. Only hidden
-    /// cells near the gold glow, and it pulses, so you can spot it a few cells into the black.
+    /// Whether you've dug close enough to sense the gold: a revealed cell within
+    /// `Tuning.goldSenseRadius` cells of it (Chebyshev). Until then it gives nothing away.
+    public static func goldSensed(_ b: Board, radius: Int = Tuning.goldSenseRadius) -> Bool {
+        let g = b.gold
+        for dy in -radius...radius {
+            for dx in -radius...radius where b.inside(g.x + dx, g.y + dy) && b.revealed[b.index(g.x + dx, g.y + dy)] {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// How strongly the golden pixel glows through the dark at cell (x, y), 0...1. Only once
+    /// it's sensed (`goldSensed`), only hidden cells near the gold glow, and it pulses, so you
+    /// spot it a few cells into the black as you close in.
     public static func goldGlow(_ b: Board, _ x: Int, _ y: Int, at t: Double) -> Double {
-        guard b.kind[b.index(b.gold.x, b.gold.y)] == .gold else { return 0 }
+        guard b.kind[b.index(b.gold.x, b.gold.y)] == .gold, goldSensed(b) else { return 0 }
         let dx = Double(x - b.gold.x), dy = Double(y - b.gold.y)
         let d = (dx * dx + dy * dy).squareRoot()
         guard d <= Tuning.goldGlowRadius else { return 0 }

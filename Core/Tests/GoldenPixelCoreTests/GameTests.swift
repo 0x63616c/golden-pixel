@@ -375,13 +375,13 @@ final class GameTests: XCTestCase {
     }
 
     func testPlacingWithoutCoinsSaysSoAndBuysNothing() {
-        var p = Progress(); p.money = 3
+        var p = Progress(); p.money = 0
         let (g, _) = play(p)
         let from = canvasPoint(g, g.board.spawn.x, g.board.spawn.y)
         g.handle(.down(from))
         g.handle(.tap(from, time: 1))
         XCTAssertTrue(g.balls.isEmpty)
-        XCTAssertEqual(g.progress.money, 3)
+        XCTAssertEqual(g.progress.money, 0)
         XCTAssertEqual(g.ui.tooltip?.lines.first, "NEED " + coins(g.ballCost(.basic)) + " COINS")
     }
 

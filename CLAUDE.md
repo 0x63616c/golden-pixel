@@ -67,7 +67,7 @@ Scenes are defined in `Core/Sources/GoldenPixelCore/Scenes.swift`. `just render`
   `App/` only presents pixels, forwards touches, saves, and plays feedback.
 - **Fog is fair.** Visible = within 3 cells (Chebyshev) of open space, nothing else (tests
   check it). Unrevealed cells render pure black; the only hints in the dark are the gold
-  glow, sensed shards (within `Tuning.shardSenseRadius`), sonar rings and the radar box.
+  glow (once within `Tuning.goldSenseRadius`), sensed shards (within `Tuning.shardSenseRadius`), sonar rings and the radar box.
 - **Tests with behaviour.** Changing rules, economy, levels or fog? Add or update a test in
   `Core/Tests`. Run `swift test` before every commit (the pre-commit hook does it).
 - **Look at it.** For visual changes, run `just render` (or `just shots` on a Mac) and check
