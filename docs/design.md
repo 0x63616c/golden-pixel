@@ -22,7 +22,8 @@ and pause buttons, and one row per unlocked ball type.
   stars; toughness only costs time, so soft pockets are the money and hard rock is in the
   way. Every ball type's first ball costs 1 coin, and each one after costs a fixed step more
   (`BallType.costStep`: basic +8, heavy +60, ghost +400), so prices stay in the hundreds.
-  Unlocking a type in the tree (shards) is what a new type really costs.
+  Unlocking a type in the tree (shards) is what a new type really costs: 2 to 6 shards.
+  Every other rank in the tree is 1 shard, a specialisation 2 (182 for the whole tree).
 - **Pause and restart.** The panel's pause button (two bars) opens: RESUME, RESTART LEVEL (asks first),
   MAIN MENU. The main menu itself is just PLAY/CONTINUE, HOW TO PLAY and SETTINGS, plus LEVELS
   once a level is cleared.

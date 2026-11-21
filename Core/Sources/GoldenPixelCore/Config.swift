@@ -159,22 +159,22 @@ public struct SkillNode: Sendable {
         .init(id: "core", name: "Core", text: "+10% damage for every ball", cost: 1, ranks: 1, requires: [], x: 0, y: 0, effect: .damage(0.1)),
         .init(id: "sharp", name: "Sharp", text: "+20% damage per rank", cost: 1, ranks: 5, requires: ["core"], x: -4, y: 0, effect: .damage(0.2)),
         .init(id: "crit", name: "Precision", text: "+4% crit chance per rank", cost: 1, ranks: 5, requires: ["sharp"], x: -4, y: 2, effect: .crit(0.04)),
-        .init(id: "critdmg", name: "Brutal", text: "+50% crit damage per rank", cost: 2, ranks: 3, requires: ["crit"], x: -4, y: 4, effect: .critDamage(0.5)),
+        .init(id: "critdmg", name: "Brutal", text: "+50% crit damage per rank", cost: 1, ranks: 3, requires: ["crit"], x: -4, y: 4, effect: .critDamage(0.5)),
         .init(id: "momentum", name: "Momentum", text: "+10% ball speed per rank", cost: 1, ranks: 5, requires: ["core"], x: 10, y: 0, effect: .speed(0.1)),
         .init(id: "greed", name: "Greed", text: "+25% coins per rank", cost: 1, ranks: 5, requires: ["core"], x: 0, y: 2, effect: .money(0.25)),
         .init(id: "cash", name: "Windfall", text: "+25 coins now, per rank", cost: 1, ranks: 5, requires: ["greed"], x: -1, y: 4, effect: .cash(25)),
         .init(id: "lantern", name: "Lantern", text: "Breaks light up 1 cell further", cost: 1, ranks: 3, requires: ["greed"], x: 1, y: 4, effect: .lantern),
-        .init(id: "radar", name: "Radar", text: "Boxes in the golden pixel", cost: 2, ranks: 3, requires: ["lantern"], x: 1, y: 6, effect: .radar),
-        .init(id: "sonar", name: "Sonar", text: "The golden pixel pings", cost: 2, ranks: 3, requires: ["radar"], x: 1, y: 8, effect: .sonar),
+        .init(id: "radar", name: "Radar", text: "Boxes in the golden pixel", cost: 1, ranks: 3, requires: ["lantern"], x: 1, y: 6, effect: .radar),
+        .init(id: "sonar", name: "Sonar", text: "The golden pixel pings", cost: 1, ranks: 3, requires: ["radar"], x: 1, y: 8, effect: .sonar),
     ]
 
     /// Where each ball type's branch sits (column x) and what unlocks it. The unlocks share
     /// one row just above the spine: Basic straight above Core, Heavy above Sharp (Bomb beside
     /// it), Lightning and Fast either side of Momentum (Ghost and Sniper beside them).
     static let ballColumn: [BallKind: (x: Int, requires: [String], cost: Int)] = [
-        .bomb: (-8, ["u-heavy"], 12), .heavy: (-4, ["sharp"], 6), .basic: (0, ["core"], 0),
-        .ghost: (4, ["u-lightning"], 16), .lightning: (8, ["momentum"], 10),
-        .fast: (12, ["momentum"], 3), .sniper: (16, ["u-fast"], 12),
+        .bomb: (-8, ["u-heavy"], 5), .heavy: (-4, ["sharp"], 3), .basic: (0, ["core"], 0),
+        .ghost: (4, ["u-lightning"], 6), .lightning: (8, ["momentum"], 4),
+        .fast: (12, ["momentum"], 2), .sniper: (16, ["u-fast"], 5),
     ]
 
     /// A ball type's branch, growing up from its unlock: damage and speed side by side, then
@@ -182,8 +182,9 @@ public struct SkillNode: Sendable {
     static func ballBranch(_ k: BallKind) -> [SkillNode] {
         let t = k.type, col = ballColumn[k]!, x = col.x, n = t.name
         let u = "u-\(k.rawValue)"
-        // Later types' upgrades cost more per rank.
-        let c = k.index < 3 ? 1 : 2
+        // Every rank is 1 shard and a specialisation 2, for every type: the unlock is what
+        // makes a strong type dear.
+        let c = 1
         return [
             .init(id: u, name: "\(n) ball", text: k == .basic ? "Your first ball" : "Unlock the \(n.lowercased()) ball",
                   cost: col.cost, ranks: 1, requires: col.requires, x: x, y: -2, effect: .unlock(k)),
@@ -193,9 +194,9 @@ public struct SkillNode: Sendable {
                   requires: [u], x: x + 1, y: -4, effect: .ballStat(k, .speed)),
             .init(id: "\(k.rawValue)-sp", name: "\(n) \(t.specialName.lowercased())", text: "\(n) balls: more \(t.specialName.lowercased()) per rank",
                   cost: c, ranks: Stat.special.max, requires: ["\(k.rawValue)-dmg", "\(k.rawValue)-spd"], x: x, y: -6, effect: .ballStat(k, .special)),
-            .init(id: "spec-\(t.specs[0].id)", name: t.specs[0].name, text: t.specs[0].text, cost: 3 * c, ranks: 1,
+            .init(id: "spec-\(t.specs[0].id)", name: t.specs[0].name, text: t.specs[0].text, cost: 2 * c, ranks: 1,
                   requires: ["\(k.rawValue)-sp"], x: x - 1, y: -8, effect: .ballSpec(k, t.specs[0].id)),
-            .init(id: "spec-\(t.specs[1].id)", name: t.specs[1].name, text: t.specs[1].text, cost: 3 * c, ranks: 1,
+            .init(id: "spec-\(t.specs[1].id)", name: t.specs[1].name, text: t.specs[1].text, cost: 2 * c, ranks: 1,
                   requires: ["\(k.rawValue)-sp"], x: x + 1, y: -8, effect: .ballSpec(k, t.specs[1].id)),
         ]
     }

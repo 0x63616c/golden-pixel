@@ -15,6 +15,19 @@ final class TreeTests: XCTestCase {
         SkillNode.all.flatMap { s in s.requires.compactMap { SkillNode.byID[$0] }.map { (from: $0, to: s) } }
     }
 
+    /// Shards stay small: every rank is 1 shard, a specialisation 2, and only the unlocks of
+    /// stronger types cost more. The whole tree is 182, which is also what a level holds.
+    func testTheTreeIsCheap() {
+        for n in SkillNode.all {
+            switch n.effect {
+            case .unlock: XCTAssertLessThanOrEqual(n.cost, 6, n.id)
+            case .ballSpec: XCTAssertEqual(n.cost, 2, n.id)
+            default: XCTAssertEqual(n.cost, 1, n.id)
+            }
+        }
+        XCTAssertEqual(SkillNode.totalCost, 182)
+    }
+
     func testThereIsOneRootAndEverythingGrowsFromIt() {
         let roots = SkillNode.all.filter { $0.requires.isEmpty }.map(\.id)
         XCTAssertEqual(roots, [SkillTree.root])
