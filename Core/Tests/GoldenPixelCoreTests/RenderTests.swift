@@ -42,6 +42,8 @@ final class RenderTests: XCTestCase {
     func testUnrevealedCellsArePureBlackAwayFromTheGoldAndShards() {
         let g = Game(seed: 1)
         g.ui.started = true
+        // The first ball is down, so the "hold an open spot" prompt is off the board.
+        g.buyBall(.basic)
         let r = Renderer()
         r.render(g)
         let b = g.board, L = g.ui.layout, cp = Tuning.cellPixels
@@ -66,7 +68,10 @@ final class RenderTests: XCTestCase {
         g.ui.started = true
         let b = g.board
         for i in b.revealed.indices { b.revealed[i] = true; b.revealedAt[i] = -10 }
-        g.balls.removeAll(); g.particles.removeAll(); g.rings.removeAll()
+        // One ball, parked in the open spawn cell: nothing over a block, and no "hold an open
+        // spot" prompt across the board.
+        g.balls = [Ball(kind: .basic, x: Double(b.spawn.x) + 0.5, y: Double(b.spawn.y) + 0.5, vx: 0, vy: -1)]
+        g.particles.removeAll(); g.rings.removeAll()
         let r = Renderer()
         r.render(g)
         let cp = Tuning.cellPixels, L = g.ui.layout

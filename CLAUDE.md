@@ -27,6 +27,8 @@ swift test --filter FogTests                  # one test class
 swift test --filter FogTests/testLevelStartsAsSpawnPocketPlusAThreeCellBorder   # one test
 swift run -c release gp-render all build/render   # every staged scene at device scale 6, bloom off
 swift run -c release gp-render mid build/render --frames 60   # one scene, as a frame sequence
+swift run -c release gp-render levels build/levels   # every campaign level's map on one sheet (look at it after changing Levels.swift)
+swift run -c release gp-sim                   # a bot plays levels 1 to 7: clear times (run after changing a level's shape)
 python3 tools/gridcheck.py build/render/*.png     # grid check (needs Pillow; default --scale 6)
 just ios-sim                                  # Duo simulator; SCENE=mid just ios-sim for a staged scene
 just shots                                    # Duo simulator screenshots of staged scenes

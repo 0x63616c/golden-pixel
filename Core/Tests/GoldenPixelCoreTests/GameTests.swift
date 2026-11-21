@@ -111,6 +111,38 @@ final class GameTests: XCTestCase {
         XCTAssertEqual(g.ui.screen, .menu)
     }
 
+    /// A dig saved on an older design of the level can't be laid over the new one (its cell
+    /// numbers mean other cells now), so the level starts again; what is kept for good stays.
+    func testASaveFromAnOlderLayoutStartsTheLevelAgain() {
+        var p = Progress(); p.level = 3; p.maxLevel = 5; p.stars = 4; p.money = 900; p.levelTime = 60
+        p.balls[BallKind.basic.rawValue] = BallProgress(owned: 5)
+        let g = Game(progress: p)
+        let solid = g.board.kind.indices.first { g.board.kind[$0] == .wall }!
+        var s = g.saveFile()
+        XCTAssertEqual(s.board?.layout, LevelGen.layoutVersion)
+        s.board?.broken = [solid]
+
+        // On the layout it was saved under, the board comes back as it was left.
+        let same = Game()
+        same.load(s)
+        XCTAssertEqual(same.board.kind[solid], .empty)
+        XCTAssertEqual(same.progress.money, 900)
+        XCTAssertEqual(same.balls.count, 5)
+
+        for old in [nil, LevelGen.layoutVersion - 1] {
+            s.board?.layout = old
+            let h = Game()
+            h.load(s)
+            XCTAssertEqual(h.board.kind, LevelGen.make(level: 3).kind, "nothing from the old dig is applied")
+            XCTAssertEqual(h.progress.level, 3)
+            XCTAssertEqual(h.progress.maxLevel, 5)
+            XCTAssertEqual(h.progress.stars, 4)
+            XCTAssertEqual(h.progress.money, Tuning.startCoins)
+            XCTAssertEqual(h.progress.levelTime, 0)
+            XCTAssertEqual(h.balls.count, 0)
+        }
+    }
+
     /// The current level's tile carries on where it was, with no question asked.
     func testPickingTheCurrentLevelContinuesIt() {
         var p = Progress(); p.maxLevel = 3; p.level = 3; p.money = 900; p.levelTime = 60; p.runEarnings = 700

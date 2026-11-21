@@ -2,7 +2,7 @@
 //   swift run gp-render <scene> <out-dir> [--device NAME] [--scale N] [--size WxH] [--frames N] [--bloom]
 // Scenes: see Scenes.names (menu, start, mid, late, tree, sheet, ...), all; or icon
 // (the flat 1024 px PNGs), icon-layers (one SVG per Icon.Layer, for ios/AppIcon.icon/Assets),
-// or levels (every campaign level's walls on one sheet).
+// or levels (every campaign level's map on one sheet).
 // Default: the Duo canvas (475x334) at scale 6 = the device's own pixels, bloom off, so the
 // output is pixel-exact (every 6x6 block one colour; tools/gridcheck.py verifies).
 // --device duo|iphone|max|se|mini renders that screen's canvas with its safe area, at its own
@@ -46,8 +46,9 @@ if scene == "icon-layers" {
     exit(0)
 }
 if scene == "levels" {
-    // One sheet of every campaign level's map, one art pixel per cell, walls only (grey):
-    // the shape each level is dug out of, for level design.
+    // One sheet of every campaign level's map, one art pixel per cell, for level design: the
+    // rock that shapes it (gray where it faces the dig, dark where it is solid), every block
+    // in its durability shade, the spawn pocket (white dot), the shards (mint) and the gold.
     let count = LevelSpec.campaign.count, cols = 4, tile = 2 * 50 + 5 + 8, head = 14
     let rows = (count + cols - 1) / cols
     let sheet = Canvas(width: cols * tile + 8, height: rows * (tile + head) + 8)
@@ -56,8 +57,20 @@ if scene == "levels" {
         let b = LevelGen.make(level: level)
         let ox = 8 + ((level - 1) % cols) * tile, oy = 8 + ((level - 1) / cols) * (tile + head)
         _ = sheet.text("\(level) \(b.name)", ox, oy, Palette.text)
-        for y in 0..<b.size { for x in 0..<b.size where b.kind[b.index(x, y)] == .wall {
-            sheet.set(ox + x, oy + head + y, Palette.muted)
+        for y in 0..<b.size { for x in 0..<b.size {
+            let i = b.index(x, y)
+            let c: Pixel
+            switch b.kind[i] {
+            case .wall:
+                var faces = false
+                for dy in -1...1 { for dx in -1...1 where b.kindAt(x + dx, y + dy) != .wall { faces = true } }
+                c = faces ? Palette.muted : Palette.panel1
+            case .block: c = Palette.tier(Int(b.tier[i]))
+            case .shard: c = Palette.mint
+            case .gold: c = Palette.gold
+            case .empty: c = x == b.spawn.x && y == b.spawn.y ? Palette.white : Palette.black
+            }
+            sheet.set(ox + x, oy + head + y, c)
         } }
     }
     try Data(PNG.encode(sheet, scale: scale, bloom: false)).write(to: out.appendingPathComponent("levels.png"))

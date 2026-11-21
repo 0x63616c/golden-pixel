@@ -38,8 +38,8 @@ final class LevelTests: XCTestCase {
         }
     }
 
-    /// Durability is laid out: rock near the spawn is softer than rock far from it, and blocks
-    /// clump into patches (a block matches its neighbour's tier well above chance) instead of a
+    /// Durability is laid out: rock a short dig from the spawn is softer than rock a long dig
+    /// from it (round the walls, not through them), and blocks clump into patches (a block matches its neighbour's tier well above chance) instead of a
     /// per-cell speckle.
     func testDurabilityIsDeeperTougherWithPatches() {
         for level in 1...12 {
@@ -59,8 +59,8 @@ final class LevelTests: XCTestCase {
             } }
             XCTAssertGreaterThan(Double(same) / Double(pairs), chance + 0.1, "level \(level) looks like a speckle")
 
-            func d(_ i: Int) -> Double { LevelGen.dist(Point(i % b.size, i / b.size), b.spawn) }
-            let byDepth = blocks.sorted { d($0) < d($1) }
+            let depth = LevelGen.depths(b)
+            let byDepth = blocks.sorted { depth[$0] < depth[$1] }
             func mean(_ s: ArraySlice<Int>) -> Double { Double(s.reduce(0) { $0 + Int(b.tier[$1]) }) / Double(s.count) }
             let third = byDepth.count / 3
             XCTAssertLessThan(mean(byDepth.prefix(third)) + 0.5, mean(byDepth.suffix(third)), "level \(level): the far third should be tougher")
@@ -142,6 +142,69 @@ final class LevelTests: XCTestCase {
         }
         XCTAssertEqual(Economy.shardValues(weights: [1, 8, 27, 64], total: 100).reduce(0, +), 100)
         XCTAssertEqual(Economy.shardValues(weights: [1, 1000], total: 10).min(), 1, "every shard pays at least one")
+    }
+
+    /// The campaign is seven different places: every shape once.
+    func testEveryCampaignLevelIsADifferentShape() {
+        XCTAssertEqual(LevelSpec.campaign.map(\.shape), Shape.allCases)
+        XCTAssertEqual(Set(LevelSpec.campaign.map(\.name)).count, LevelSpec.campaign.count)
+    }
+
+    /// Depth is how far the dig has to go: round a wall, never through it or across its corner.
+    func testDepthGoesRoundWalls() {
+        let b = Board(size: 9, level: 1, name: "T")
+        for i in b.kind.indices { b.kind[i] = .block }
+        // A wall down the middle, open only along the bottom two rows.
+        for y in 0...6 { b.kind[b.index(4, y)] = .wall }
+        b.spawn = Point(1, 1)
+        b.kind[b.index(1, 1)] = .empty
+        let d = LevelGen.depths(b)
+        XCTAssertEqual(d[b.index(1, 1)], 0)
+        XCTAssertEqual(d[b.index(3, 1)], 2, accuracy: 1e-9)
+        XCTAssertEqual(d[b.index(2, 2)], 1.4, accuracy: 1e-9)
+        XCTAssertEqual(d[b.index(4, 3)], .infinity, "walls have no depth")
+        XCTAssertEqual(d[b.index(7, 1)], 15.6, accuracy: 1e-9, "six cells away, but the dig goes down, round the wall's foot and back up")
+    }
+
+    /// What each shape is for.
+    func testShapesKeepTheirPromises() {
+        func straight(_ b: Board) -> Double { LevelGen.hyp(Double(b.gold.x - b.spawn.x), Double(b.gold.y - b.spawn.y)) }
+        func goldDepth(_ b: Board) -> Double { LevelGen.depths(b)[b.index(b.gold.x, b.gold.y)] }
+
+        // HOURGLASS: the spawn and the gold are in different bulbs, joined by a narrow neck.
+        let glass = LevelGen.make(level: 2), mid = glass.size / 2
+        let neck = (0..<glass.size).filter { glass.kind[glass.index($0, mid)] != .wall }.count
+        XCTAssertGreaterThan(neck, 4)
+        XCTAssertLessThan(neck, 12)
+        XCTAssertGreaterThan(glass.spawn.y, mid + 20)
+        XCTAssertLessThan(glass.gold.y, mid - 20)
+
+        // CROSSROADS: three shrines, the gold in one and a shard in each of the others.
+        let cross = LevelGen.make(level: 3), c = cross.size / 2
+        let shrines = [(c - 34, c), (c + 34, c), (c, c - 34)].map { cross.kind[cross.index($0.0, $0.1)] }
+        XCTAssertEqual(shrines.filter { $0 == .gold }.count, 1)
+        XCTAssertEqual(shrines.filter { $0 == .shard }.count, 2)
+
+        // NAUTILUS and CITADEL: the gold is a long way round from a spawn that is close by.
+        XCTAssertGreaterThan(goldDepth(LevelGen.make(level: 5)), 4 * straight(LevelGen.make(level: 5)))
+        let castle = LevelGen.make(level: 7), k = castle.size / 2
+        XCTAssertGreaterThan(goldDepth(castle), 3 * straight(castle))
+        for (dx, dy) in [(38, 38), (38, -38), (-38, 38), (-38, -38)] {
+            XCTAssertEqual(castle.kind[castle.index(k + dx, k + dy)], .shard, "a shard in every corner tower")
+        }
+
+        // LABYRINTH: its walls are its toughest rock, not solid. Inside the square the only
+        // unbreakable cells are the posts and the treasure room, so the room's door is no
+        // further by the dig than it looks.
+        let maze = LevelGen.make(level: 6), m = maze.size / 2
+        let hard = LevelGen.plan(level: 6).plan.hard
+        let walls = maze.kind.indices.filter { hard[$0] && maze.kind[$0] == .block }
+        XCTAssertGreaterThan(walls.count, 300)
+        XCTAssertTrue(walls.allSatisfy { maze.tier[$0] == 4 }, "every maze wall is the darkest shade")
+        var solid = 0
+        for y in (m - 44)...(m + 44) { for x in (m - 44)...(m + 44) where maze.kind[maze.index(x, y)] == .wall { solid += 1 } }
+        XCTAssertLessThan(solid, 89 * 89 * 3 / 100)
+        XCTAssertLessThan(goldDepth(maze), 1.5 * straight(maze))
     }
 
     func testFirstLevelIsGentle() {

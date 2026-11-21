@@ -1,11 +1,14 @@
 // gp-sim: plays levels headlessly with a simple bot and reports how long each one takes.
 //   swift run -c release gp-sim [--levels 1-7] [--seeds 3] [--check 0.5] [--cap 180]
 //                               [-v [--log 60] [--snap]] [--skip bomb,ghost] [--noskill u-sniper|all]
+//                               [--place face|spawn]
 //   swift run -c release gp-sim --map 3        (prints level 3 as text and exits)
 // Each level starts as if the previous ones were cleared (stars = level - 1). The bot uses
 // only the public Game API, the way a player checking in every `--check` seconds would:
 // it buys any affordable tree node (ball unlocks and damage first) and then the best
-// damage-per-coin ball it can afford, aimed in a random direction. Deterministic per seed.
+// damage-per-coin ball it can afford, put down at the spawn and aimed anywhere (or, with
+// `--place face`, on an open spot along the dig face, aimed at the rock beside it).
+// Deterministic per seed.
 import Foundation
 import GoldenPixelCore
 
@@ -25,6 +28,8 @@ let capMinutes = Double(option("--cap") ?? "180") ?? 180
 let logEvery = Double(option("--log") ?? "60") ?? 60
 let verbose = args.contains("-v")
 let snap = args.contains("--snap")
+/// Where the bot puts its balls: "face" (anywhere along the dig face) or "spawn".
+let placeAt = option("--place") ?? "spawn"
 /// Ball kinds the bot never buys (unlocks still bring their free ball).
 let skip = Set((option("--skip") ?? "").split(separator: ",").compactMap { BallKind(rawValue: String($0)) })
 /// Tree nodes the bot never buys ("all" for none at all).
@@ -77,6 +82,32 @@ func priority(_ s: SkillNode) -> Int {
     case .ballSpec: return 3
     default: return 4
     }
+}
+
+/// Buys a ball and puts it down the way a player does: on an open spot they can see, aimed at
+/// the rock beside it. `--place spawn` (the default) keeps every ball at the spawn, aimed
+/// anywhere: the player who never moves the camera. `--place face` puts each one somewhere
+/// along the dig face, as a player following the dig does; it clears winding levels faster.
+func place(_ k: BallKind, in g: Game, rng: inout RNG) -> Bool {
+    let b = g.board
+    var face: [(cell: Int, toward: Int)] = []
+    if placeAt == "face" {
+        for i in b.kind.indices where b.kind[i] == .empty {
+            let x = i % b.size, y = i / b.size
+            for (dx, dy) in [(1, 0), (-1, 0), (0, 1), (0, -1)] where b.inside(x + dx, y + dy) {
+                let j = b.index(x + dx, y + dy)
+                if b.kind[j].breakable, b.revealed[j] { face.append((i, j)); break }
+            }
+        }
+    }
+    guard !face.isEmpty else {
+        let a = rng.range(0, 2 * Double.pi)
+        return g.buyBall(k, direction: (cos(a), sin(a)))
+    }
+    let spot = face[rng.int(face.count)]
+    let x = spot.cell % b.size, y = spot.cell / b.size
+    let a = atan2(Double(spot.toward / b.size - y), Double(spot.toward % b.size - x)) + rng.range(-0.6, 0.6)
+    return g.buyBall(k, at: (Double(x) + 0.5, Double(y) + 0.5), direction: (cos(a), sin(a)))
 }
 
 struct Result {
@@ -151,8 +182,7 @@ func play(level: Int, seed: Int) -> Result {
         while true {
             let options = BallKind.allCases.filter { g.mods.unlocked.contains($0) && !skip.contains($0) && g.ballCost($0) <= g.progress.money }
             guard let k = options.max(by: { ballValue(g, $0) / g.ballCost($0) < ballValue(g, $1) / g.ballCost($1) }) else { break }
-            let a = rng.range(0, 2 * Double.pi)
-            guard g.buyBall(k, direction: (cos(a), sin(a))) else { break }
+            guard place(k, in: g, rng: &rng) else { break }
             // The level's start coins pay for the first ball; the next one is the first earned.
             if r.firstBall == nil, g.balls.count >= 2 { r.firstBall = t }
             r.bought(at: t)

@@ -110,7 +110,16 @@ public final class Game {
         }
         refreshMods()
         board = LevelGen.make(level: progress.level, at: time)
-        if let bs = s.board { SaveCodec.restore(bs, into: board) }
+        if let bs = s.board {
+            if bs.layout == LevelGen.layoutVersion {
+                SaveCodec.restore(bs, into: board)
+            } else {
+                // The level has been redesigned since this dig was saved, so its cells no longer
+                // line up: the level starts again. Stars and settings are untouched.
+                startLevel(progress.level)
+                events.removeAll(); banners.removeAll()
+            }
+        }
         if board.kind[board.index(board.gold.x, board.gold.y)] != .gold { advanceLevel() }
         centreCamera()
         respawnBalls()

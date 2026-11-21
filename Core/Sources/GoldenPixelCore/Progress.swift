@@ -54,6 +54,9 @@ public struct BoardSave: Codable, Equatable, Sendable {
     /// Damaged blocks: index and remaining hit points.
     public var damaged: [Int: Double]
     public var revealed: [Int]
+    /// The `LevelGen.layoutVersion` the board was generated under (nil in saves from before
+    /// levels had one). Cell numbers only mean anything on that layout.
+    public var layout: Int?
 }
 
 public struct SaveFile: Codable, Equatable, Sendable {
@@ -97,7 +100,7 @@ public enum SaveCodec {
             else if b.kind[i].breakable, b.hp[i] < b.maxHP[i] { damaged[i] = b.hp[i] }
             if b.revealed[i] { revealed.append(i) }
         }
-        return BoardSave(level: b.level, broken: broken, damaged: damaged, revealed: revealed)
+        return BoardSave(level: b.level, broken: broken, damaged: damaged, revealed: revealed, layout: LevelGen.layoutVersion)
     }
 
     public static func restore(_ s: BoardSave, into b: Board) {

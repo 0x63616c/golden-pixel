@@ -41,6 +41,39 @@ and pause buttons, and one row per unlocked ball type.
   minutes for the first four levels, then 15 to 25 (`swift run -c release gp-sim` checks it); the camera starts on the
   spawn and pinches between 0.5x, 1x, 2x, 3x and 4x.
 
+## The levels
+
+Each level is a place: its own outline and one idea about space. You find the shape by
+digging it out, and breaking the gold lights the whole of it. `swift run -c release gp-render
+levels build/levels` draws all seven on one sheet (rock, durability, spawn, shards, gold).
+
+| | Level | The place | The idea |
+| --- | --- | --- | --- |
+| 1 | FIRST LIGHT | An open cave with a wobbly rim and a few boulders | Nothing in the way: learn the dig. The gold hides on the far side. |
+| 2 | HOURGLASS | Two bulbs joined by a neck nine cells wide | Spawn at the foot, gold at the head: everything goes through the neck, so where you put a ball starts to matter. |
+| 3 | CROSSROADS | Four round petals off a hub with a boulder in the middle | You start in the bottom petal. Each of the other three has a walled shrine with its door on the far side: the gold in one, a rich shard in the other two. The hub is where you choose. |
+| 4 | HONEYCOMB | Nineteen six-sided rooms | Most walls have a door, some don't, so the way from the bottom room to the gold in a top one winds a little. |
+| 5 | NAUTILUS | A shell: one passage coiling inward, halving in width each turn, crossed by curved chamber walls | A long way round to a gold that is close by, at the very middle of the coil. |
+| 6 | LABYRINTH | A square maze round a treasure room | The maze's walls are its toughest rock, not solid: a ball can break through, it just takes far longer than the corridor. Only the posts and the treasure room (one door, on the far side) are unbreakable. Dead ends hold shards. |
+| 7 | CITADEL | A castle: corner towers, two walls and a keep, each two cells thick | No two gates line up, so the way in goes round: towers, side gates, the far gate, back round to the keep. A shard in every tower. |
+
+Later levels (DEEP 1, 2, ...) reuse the seven shapes with new seeds.
+
+What makes a level play well here:
+
+- **Keep the dig wide.** Balls can't be steered once placed, so a ball is only useful while it
+  can reach rock. In an open space every flight ends on a block; down a long walled corridor
+  most end on a wall, and the further the dig face gets the less each ball does. A level made
+  of solid-walled corridors is a slog (`gp-sim` shows it as a long "longest gap"). So walls
+  are accents: necks, gates, rooms with wide doors. Where a shape needs a maze of walls, they
+  are hard rock (`Plan.hard`), which every hit still wears down.
+- **The shape sets the length.** There is no payout dial: a level's clear time comes from how
+  far the gold is by the dig and how much rock is in the way. Check with `gp-sim` after any
+  change (`--place face` plays as someone who puts balls where the digging is, which is
+  quicker on the winding levels).
+- **Dead ends pay.** A shape lists its side rooms and dead ends (`Plan.treasures`) and each
+  gets a shard.
+
 ## Rules of the look
 
 - **One grid.** 475 x 334 art pixels, 6 device pixels each on the Duo. Everything lands on it:
@@ -54,8 +87,9 @@ and pause buttons, and one row per unlocked ball type.
 - **Flat.** One colour per surface: no highlights, shadows or bevels on cells, sprites,
   cards or buttons. Packed cells read as one surface with no lines between them. Walls are a
   neutral dark grey, never brighter than the blocks, so nothing pale floats in the dark.
-- **Deeper is tougher, with patches.** Rock hardens with distance from the spawn, broken up
-  by soft pockets to dig toward and hard clumps to go round. Each level's mix of shades comes
+- **Deeper is tougher, with patches.** Rock hardens the further the dig has to go to reach it
+  from the spawn (round walls, not through them), broken up by soft pockets to dig toward
+  and hard clumps to go round. Each level's mix of shades comes
   from a seeded table that leans tougher each level; only the layout is designed. Walls are
   the only unbreakable cells; the golden pixel and the mint shards are their own kinds.
 - **Rounded corners.** The Duo's inner screen has heavily rounded corners

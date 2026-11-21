@@ -83,12 +83,22 @@ final class FogTests: XCTestCase {
         for i in b.kind.indices where b.kind[i] == .empty { XCTAssertTrue(b.revealed[i], "open cells are always visible") }
     }
 
+    /// A wall out in the dark shows itself the moment a ball bounces off it, and not before.
     func testBallsRevealHiddenWallsTheyTouch() {
         let g = Game(seed: 2)
         g.ui.started = true
-        for _ in 0..<(60 * 60) { g.update(1.0 / 60) }
         let b = g.board
-        XCTAssertFalse(b.kind.indices.filter { b.kind[$0] == .wall && b.revealed[$0] }.isEmpty)
+        // A hidden wall with a hidden block on its left: open that block without lighting
+        // anything, and send a ball through it at the wall.
+        let wall = b.kind.indices.first { i in
+            b.kind[i] == .wall && !b.revealed[i] && i % b.size > 0 && b.kind[i - 1] == .block && !b.revealed[i - 1]
+        }!
+        b.kind[wall - 1] = .empty; b.hp[wall - 1] = 0
+        g.balls = [Ball(kind: .basic, x: Double(wall % b.size) - 0.5, y: Double(wall / b.size) + 0.5, vx: 1, vy: 0)]
+        XCTAssertFalse(b.revealed[wall])
+        for _ in 0..<10 { g.update(1.0 / 60) }
+        XCTAssertTrue(b.revealed[wall])
+        XCTAssertTrue(g.events.contains(.wallFound))
     }
 
     func testShardsAreSensedOnlyWhenTheLightGetsClose() {
