@@ -49,7 +49,7 @@ Skip this step when the screenshots row is current. Otherwise:
 
 1. Update `STORE_SCENES` in `ios/ios.sh` to the best scenes that exist, in shot-list order, at most 10. Missing scenes are core work. List them for the user; don't add them yourself.
 2. Run `just appstore-shots`. It takes several minutes (three simulators). Run it in the background and wait for it to exit. Other sessions share these simulators: start only when no other session is capturing. A `cannot find 'X' in scope` build error means a stale Xcode project (fixed: `ios.sh` now regenerates on every build).
-3. Look at every image: downscale with `sips -Z 900 <png> --out <scratchpad>/<name>.png` and Read it. Each one must show its intended scene: no real save game, no blank board, no debug text. Re-capture or fix the scene list until they do.
+3. Look at every image (`goldbreak` once showed the next level: the app runs a scene live for seconds before capturing, so a scene with a timer must freeze it): downscale with `sips -Z 900 <png> --out <scratchpad>/<name>.png` and Read it. Each one must show its intended scene: no real save game, no blank board, no debug text. Re-capture or fix the scene list until they do.
 
 Done when `just appstore-check` shows no FAIL in the screenshots section and you have looked at every file.
 
@@ -105,6 +105,8 @@ curl -s -H "Title: App Store: <version> (<N>) submitted for review" -H "Tags: ta
 ```
 
 On failure use the title `App Store submission failed` (tag `warning`) and the error in the body.
+
+Version already `WAITING_FOR_REVIEW` with an older build (a resubmit): cancel it before step 5, from a scratch Fastfile: list `v1/apps/<app id>/reviewSubmissions`, PATCH `v1/reviewSubmissions/<id>` with `attributes: { canceled: true }`, and wait until it reads `COMPLETE` (~20 s). Then upload the listing and run `release` with the new build.
 
 `App submission blocked - Cannot submit version due to unfulfilled compliance requirement` hides the real reason: POST `v1/reviewSubmissionItems` yourself and read `meta.associatedErrors` (codes like `STATE_ERROR.PPM.compliance.form.<FORM>...NEW_APP_SUBMISSION_BLOCK`). `SECURITY...` and `AIGENERATE...` forms are mainland China's AI-content and security declarations (from November 2026): Golden Pixel is not sold in China (`CHN` unavailable; games there need a license anyway), which clears them. Review usually takes a day or two. After approval the version waits for the user to press **Release This Version**.
 
