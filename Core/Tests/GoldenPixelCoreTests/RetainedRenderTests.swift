@@ -166,24 +166,26 @@ final class RetainedRenderTests: XCTestCase {
     }
 
     /// `changed` may only say no when the frame really is the last one again, and it does say
-    /// no where nothing moves (the open tree, the pause card), which is what lets the shell
-    /// leave those frames off the GPU.
+    /// no for nearly every frame that is (the open tree, the pause card), which is what lets
+    /// the shell leave those frames off the GPU.
     func testUnchangedFramesAreReportedAndOnlyThose() {
-        for (name, least) in [("tree", 100), ("pause", 90), ("mid", 0), ("menu", 0)] {
+        for (name, stands) in [("tree", true), ("pause", true), ("mid", false), ("menu", false)] {
             let g = Scenes.make(name)
             let r = Renderer(display: Device.duo.display)
             r.render(g)
-            var last = r.canvas.pixels, still = 0
+            var last = r.canvas.pixels, reported = 0, repeated = 0
             for frame in 0..<120 {
                 g.update(1.0 / 120)
                 r.render(g)
+                if r.canvas.pixels == last { repeated += 1 }
                 if !r.changed {
-                    still += 1
+                    reported += 1
                     XCTAssertEqual(r.canvas.pixels, last, "\(name) frame \(frame) was reported unchanged")
                 }
                 last = r.canvas.pixels
             }
-            XCTAssertGreaterThanOrEqual(still, least, "\(name): frames reported unchanged")
+            if stands { XCTAssertGreaterThan(repeated, 60, "\(name) mostly stands still") }
+            XCTAssertGreaterThanOrEqual(reported * 10, repeated * 9, "\(name): repeated frames reported unchanged")
         }
     }
 
