@@ -27,18 +27,23 @@ public struct RNG: Sendable {
 
 public final class Board {
     public let size: Int
-    public var kind: [CellKind]
+    // The simulation and the renderer read these several times per ball and per cell, on one
+    // thread and never across a write, so the run-time exclusivity checks are switched off.
+    @exclusivity(unchecked) public var kind: [CellKind] { didSet { fogVersion &+= 1 } }
     public var tier: [UInt8]
-    public var rich: [Bool]
+    @exclusivity(unchecked) public var rich: [Bool]
     /// Shards paid by each shard pixel (0 elsewhere).
     public var shardValue: [Int]
-    public var hp: [Double]
-    public var maxHP: [Double]
-    public var revealed: [Bool]
+    @exclusivity(unchecked) public var hp: [Double]
+    @exclusivity(unchecked) public var maxHP: [Double]
+    @exclusivity(unchecked) public var revealed: [Bool] { didSet { fogVersion &+= 1 } }
     /// When each cell was revealed (game time), for the dither-in animation. -1 if never.
-    public var revealedAt: [Double]
+    @exclusivity(unchecked) public var revealedAt: [Double]
     /// When each cell was last hit, for the flash.
-    public var hitAt: [Double]
+    @exclusivity(unchecked) public var hitAt: [Double]
+    /// Counts every write to `kind` and `revealed`, wherever it comes from, so whatever is
+    /// worked out from the two (`Fog.shownShards`) can be kept until one of them changes.
+    @exclusivity(unchecked) public private(set) var fogVersion = 0
     public var spawn: Point
     public var gold: Point
     public var level: Int

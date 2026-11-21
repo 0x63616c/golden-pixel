@@ -9,13 +9,34 @@
 /// levels (nearest neighbour), so zoomed pixels are exact 2x2, 3x3 ... blocks, or an exact
 /// every-other-pixel subsample at 0.5, on the same grid the UI uses.
 ///
+/// Frames mostly repeat what the last one drew, so the renderer keeps what it can: the board
+/// canvas (see `RenderBoard.swift`), the side panel's pixels until something it shows changes,
+/// and the previous frame, to say when a frame came out the same (`changed`).
+///
 /// The drawing is split by screen: `RenderBoard.swift` (the board and its HUD),
 /// `RenderPanel.swift` (the side panel and ball sheet), `RenderPause.swift` (the pause card),
 /// `RenderTree.swift` (the skill tree)
 /// and `RenderMenu.swift` (menu, how to play, settings, level select).
 public final class Renderer {
     public private(set) var canvas: Canvas
+    /// False when the frame `render` just drew is, pixel for pixel, the one it drew before:
+    /// there is nothing new to put on the screen.
+    public private(set) var changed = true
+    /// The frame before the one in `canvas`.
+    private var previous: [Pixel] = []
     var boardCanvas: Canvas
+    /// The look each board cell was last painted with (`CellLook`), cell by cell.
+    var cellLooks: [CellLook] = []
+    /// Set by `drawBoard` when the board canvas is known not to be what it was a frame ago.
+    var boardChanged = false
+    /// `Fog.shownShards` for a board as it stood at one `fogVersion`.
+    var shardCache: (board: Board, version: Int, shown: [Int])?
+    /// Scratch for `present`: the board column under each view column.
+    var columns: [Int] = []
+    /// The side panel as last painted: what it showed, its pixels and its hit regions.
+    var panelKey: PanelKey?
+    var panelPixels: [Pixel] = []
+    var panelHits: [Hit] = []
     var hits: [Hit] = []
     /// What the system covers and how round the screen is (`Display`); the layout keeps
     /// everything you read or press clear of both.
@@ -55,7 +76,7 @@ public final class Renderer {
 
     public func render(_ g: Game) {
         let c = canvas
-        c.clear()
+        turnFrame()
         c.clip = nil
         hits = []
         hitClip = nil
@@ -65,26 +86,56 @@ public final class Renderer {
         g.ui.layout = layout
         g.ui.scrollArea = nil
         g.ui.scrollMax = 0
+        boardChanged = false
 
         switch g.ui.screen {
-        case .menu: drawMenu(g)
-        case .howTo: drawHowTo(g)
-        case .settings: drawSettings(g)
-        case .levels: drawLevels(g)
+        case .menu: c.clear(); drawMenu(g)
+        case .howTo: c.clear(); drawHowTo(g)
+        case .settings: c.clear(); drawSettings(g)
+        case .levels: c.clear(); drawLevels(g)
         case .game:
             g.ui.camera.setSizes(boardW: g.board.pixelSize, boardH: g.board.pixelSize, viewW: layout.board.w, viewH: layout.board.h)
-            drawBoard(g, layout)
-            present(g, layout)
-            drawLaunchPreview(g, layout)
-            drawBoardHUD(g, layout)
-            drawPanel(g, layout)
-            drawBanners(g, layout)
-            if let k = g.ui.sheet { drawBallSheet(g, k) }
-            if g.ui.skillsOpen { drawTree(g) }
+            if g.ui.skillsOpen && g.ui.sheet == nil {
+                // The tree paints over the whole frame, so nothing under it is drawn; only
+                // the hit regions the board and the panel record are kept, as ever.
+                hit(layout.board, .board)
+                drawPanel(g, layout, covered: true)
+                drawTree(g)
+            } else {
+                // The board and the panel write every pixel of their parts of the frame.
+                // Between them that is all of it (`Layout.fills`), so nothing needs clearing.
+                if !layout.fills { c.clear() }
+                drawBoard(g, layout)
+                present(g, layout)
+                drawLaunchPreview(g, layout)
+                drawBoardHUD(g, layout)
+                drawPanel(g, layout)
+                drawBanners(g, layout)
+                if let k = g.ui.sheet { drawBallSheet(g, k) }
+                if g.ui.skillsOpen { drawTree(g) }
+            }
             if g.ui.paused { drawPause(g) }
         }
         if let t = g.ui.tooltip, t.until > g.time { drawTooltip(t) }
         g.ui.hits = hits
+        // Anything moving on the board makes a new frame; otherwise it takes a look to tell.
+        changed = boardChanged || !sameAsPrevious()
+    }
+
+    /// Keeps the last frame to compare with; the next is drawn over the one before it, which
+    /// every screen overwrites whole.
+    func turnFrame() {
+        let c = canvas
+        swap(&c.pixels, &previous)
+        if c.pixels.count != c.width * c.height { c.pixels = [Pixel](repeating: Palette.black, count: c.width * c.height) }
+    }
+
+    func sameAsPrevious() -> Bool {
+        let now = canvas.pixels
+        guard now.count == previous.count else { return false }
+        return now.withUnsafeBytes { a in
+            previous.withUnsafeBytes { b in a.count == 0 || memcmp(a.baseAddress!, b.baseAddress!, a.count) == 0 }
+        }
     }
 
     func hit(_ r: Rect, _ a: Action, _ info: [String] = []) {

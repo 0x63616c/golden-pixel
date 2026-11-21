@@ -80,10 +80,17 @@ public enum Fog {
     /// spot it a few cells into the black as you close in.
     public static func goldGlow(_ b: Board, _ x: Int, _ y: Int, at t: Double) -> Double {
         guard b.kind[b.index(b.gold.x, b.gold.y)] == .gold, goldSensed(b) else { return 0 }
-        let dx = Double(x - b.gold.x), dy = Double(y - b.gold.y)
+        return goldGlow(dx: x - b.gold.x, dy: y - b.gold.y, pulse: goldPulse(at: t))
+    }
+
+    /// The glow's beat at time `t`: the same for every cell.
+    @inline(__always) static func goldPulse(at t: Double) -> Double { 0.55 + 0.45 * sin(t * 2.6) }
+
+    /// The glow (dx, dy) cells from a gold that is standing and sensed.
+    @inline(__always) static func goldGlow(dx: Int, dy: Int, pulse: Double) -> Double {
+        let dx = Double(dx), dy = Double(dy)
         let d = (dx * dx + dy * dy).squareRoot()
         guard d <= Tuning.goldGlowRadius else { return 0 }
-        let pulse = 0.55 + 0.45 * sin(t * 2.6)
         return max(0, 1 - d / (Tuning.goldGlowRadius + 0.5)) * pulse
     }
 

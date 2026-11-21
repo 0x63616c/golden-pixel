@@ -199,6 +199,13 @@ public struct Layout: Equatable, Sendable {
     }
 
     public var short: Bool { safeArea.h < Layout.shortHeight }
+    /// True when the board and the panel cover the whole canvas between them, as `make` lays
+    /// them out: the board from the top-left corner, the panel filling the rest.
+    public var fills: Bool {
+        guard board.x == 0, board.y == 0 else { return false }
+        return (board.h == height && panel == Rect(board.w, 0, width - board.w, height))
+            || (board.w == width && panel == Rect(0, board.h, width, height - board.h))
+    }
     /// The part of the panel you can read and press.
     public var panelContent: Rect { panel.intersection(safeArea) }
     /// The part of the board the system leaves clear.

@@ -4,9 +4,21 @@
 public final class Canvas {
     public let width: Int
     public let height: Int
-    public var pixels: [Pixel]
+    // Drawing is single-threaded and never overlaps an access to these with a write, so the
+    // run-time exclusivity checks (several per pixel on the hot paths) are switched off.
+    @exclusivity(unchecked) public var pixels: [Pixel]
     /// Optional clip rectangle; nothing is drawn outside it.
-    public var clip: Rect?
+    @exclusivity(unchecked) public var clip: Rect?
+    /// While set, `set` and `fill` note what each pixel held before they overwrite it, so
+    /// `rewind` can take everything drawn since back off (the board canvas keeps its cells
+    /// between frames and draws the balls and effects over them this way).
+    @exclusivity(unchecked) var recording = false
+    /// The overwritten pixels, oldest first: index in the high half, old colour in the low.
+    @exclusivity(unchecked) private(set) var journal: [UInt64] = []
+    /// A running hash of everything drawn while `recording` since the last `rewind` (which
+    /// pixels, which colours, in order): two frames that drew different things over the same
+    /// canvas almost never share it, so a different value means a different picture.
+    @exclusivity(unchecked) private(set) var inked: UInt64 = 0
 
     public init(width: Int, height: Int) {
         self.width = width
@@ -15,14 +27,33 @@ public final class Canvas {
     }
 
     public func clear(_ c: Pixel = Palette.black) {
-        for i in pixels.indices { pixels[i] = c }
+        pixels.withUnsafeMutableBufferPointer { $0.update(repeating: c) }
+    }
+
+    /// Puts back every pixel overwritten while `recording`, newest first, and forgets them.
+    func rewind() {
+        inked = 0
+        guard !journal.isEmpty else { return }
+        pixels.withUnsafeMutableBufferPointer { p in
+            for e in journal.reversed() { p[Int(e >> 32)] = Pixel(truncatingIfNeeded: e) }
+        }
+        journal.removeAll(keepingCapacity: true)
+    }
+
+    /// Recording: pixel `i` is about to become `c`.
+    @inline(__always)
+    private func note(_ i: Int, _ c: Pixel) {
+        journal.append(UInt64(i) << 32 | UInt64(pixels[i]))
+        inked = (inked ^ (UInt64(i) << 32 | UInt64(c))) &* 0x100_0000_01b3
     }
 
     @inline(__always)
     public func set(_ x: Int, _ y: Int, _ c: Pixel) {
         guard x >= 0, y >= 0, x < width, y < height else { return }
         if let r = clip, !(x >= r.x && y >= r.y && x < r.x + r.w && y < r.y + r.h) { return }
-        pixels[y &* width &+ x] = c
+        let i = y &* width &+ x
+        if recording { note(i, c) }
+        pixels[i] = c
     }
 
     @inline(__always)
@@ -37,10 +68,12 @@ public final class Canvas {
         var x0 = max(0, x), y0 = max(0, y), x1 = min(width, x + w), y1 = min(height, y + h)
         if let r = clip { x0 = max(x0, r.x); y0 = max(y0, r.y); x1 = min(x1, r.x + r.w); y1 = min(y1, r.y + r.h) }
         guard x0 < x1, y0 < y1 else { return }
+        if recording {
+            for yy in y0..<y1 { for xx in x0..<x1 { note(yy * width + xx, c) } }
+        }
         pixels.withUnsafeMutableBufferPointer { p in
             for yy in y0..<y1 {
-                let row = yy * width
-                for xx in x0..<x1 { p[row + xx] = c }
+                (p.baseAddress! + (yy * width + x0)).update(repeating: c, count: x1 - x0)
             }
         }
     }

@@ -11,7 +11,63 @@ extension Renderer {
     /// tile (icon, price over count).
     static let fullRowWidth = 110
 
-    func drawPanel(_ g: Game, _ L: Layout) {
+    /// Everything the panel shows. While it is the same as when the panel was last painted,
+    /// the panel is the same pixels and the same hit regions.
+    struct PanelKey: Equatable {
+        var layout: Layout
+        var money: Double
+        var shards: Int
+        var stars: Int
+        var level: Int
+        var name: String
+        /// The tree: what is affordable, which balls are unlocked, what a ball costs.
+        var ranks: [String: Int]
+        var unlocked: Set<BallKind>
+        var balls: [String: BallProgress]
+        var selected: BallKind
+        /// The control being pressed right now, if any (`Game.isPressed`).
+        var pressed: Action
+    }
+
+    /// The panel: its pixels (unless the tree is `covered` over it) and its hit regions.
+    /// It is painted only when something it shows has changed; otherwise the pixels it was
+    /// last painted with are copied back and its hit regions recorded again.
+    func drawPanel(_ g: Game, _ L: Layout, covered: Bool = false) {
+        let p = g.progress
+        let key = PanelKey(layout: L, money: p.money, shards: p.shards, stars: p.stars, level: g.board.level, name: g.board.name,
+                           ranks: p.skillRanks, unlocked: g.mods.unlocked, balls: p.balls, selected: g.ui.selected,
+                           pressed: g.time < g.ui.pressedUntil ? g.ui.pressed : .none)
+        let c = canvas
+        // The panel's part of the canvas (all of it, in any real layout).
+        let P = L.panel.intersection(Rect(0, 0, c.width, c.height))
+        if key == panelKey, panelPixels.count == P.w * P.h {
+            hits.append(contentsOf: panelHits)
+            guard !covered, P.w > 0 else { return }
+            panelPixels.withUnsafeBufferPointer { src in
+                c.pixels.withUnsafeMutableBufferPointer { dst in
+                    for y in 0..<P.h {
+                        (dst.baseAddress! + ((P.y + y) * c.width + P.x)).update(from: src.baseAddress! + y * P.w, count: P.w)
+                    }
+                }
+            }
+            return
+        }
+        let first = hits.count
+        paintPanel(g, L)
+        panelKey = key
+        panelHits = Array(hits[first...])
+        if panelPixels.count != P.w * P.h { panelPixels = [Pixel](repeating: Palette.black, count: P.w * P.h) }
+        guard P.w > 0 else { return }
+        c.pixels.withUnsafeBufferPointer { src in
+            panelPixels.withUnsafeMutableBufferPointer { dst in
+                for y in 0..<P.h {
+                    (dst.baseAddress! + y * P.w).update(from: src.baseAddress! + ((P.y + y) * c.width + P.x), count: P.w)
+                }
+            }
+        }
+    }
+
+    func paintPanel(_ g: Game, _ L: Layout) {
         let c = canvas, P = L.panel, A = L.panelContent
         c.fill(P, Palette.panel0)
         hit(P, .panel)
